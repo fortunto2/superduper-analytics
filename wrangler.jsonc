@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "superduper-analytics",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-31",
+  "observability": { "enabled": true },
+
+  // Hot store. Free, unlimited cardinality, SQL API — but Cloudflare DELETES it after
+  // 3 months, which is exactly why the Iceberg archive below exists.
+  "analytics_engine_datasets": [
+    { "binding": "EVENTS", "dataset": "superduper_events" }
+  ]
+
+  // Cold store — added in v2. Pipelines needs Workers Paid; wire it with:
+  //   wrangler pipelines setup
+  // then bind the stream here as { "binding": "ARCHIVE", "pipeline": "..." } and enable the
+  // catalog on the bucket:  wrangler r2 bucket catalog enable <bucket>
+}

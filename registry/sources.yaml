@@ -1,0 +1,91 @@
+# Source registry — the single source of truth for what may report events.
+#
+# Adding a site or an app is ONE COMMIT here. `make sync` applies it: allowed origins for the
+# web ingest, a write key for apps, and the partition value used in the Iceberg archive.
+#
+# This file lives in a PUBLIC repo, so it carries NO SECRETS — only public identifiers.
+# Write keys are derived at sync time and stored as Worker secrets.
+#
+# `id` is permanent: it is the partition key in the archive. Renaming one orphans history.
+
+sites:
+  - id: superduperai
+    url: https://superduperai.co
+  - id: live2play
+    url: https://live2play.superduperai.co
+  - id: life2film
+    url: https://life2film.com
+  - id: facealarm
+    url: https://face-alarm.com
+  - id: you2idea
+    url: https://you2idea.com
+  - id: miralinka
+    url: https://miralinka.com
+  - id: miralinka-marafon
+    url: https://marafon.miralinka.com
+  - id: books
+    url: https://books.superduperai.co
+  - id: rusty
+    url: https://rusty.superduperai.co
+  - id: promptwizard
+    url: https://prompt.superduperai.co
+  - id: editor
+    url: https://editor.superduperai.co
+  - id: rustman
+    url: https://rustman.org
+  - id: akbuzat
+    url: https://akbuzat.net
+
+# Apple `app_id` is the App Store Connect numeric id — handy for joining store analytics later.
+apps:
+  - id: live2play
+    platform: ios
+    bundle_id: co.superduperai.live2play
+    app_id: "6794370589"
+    site: live2play          # same product as the site above → shared id, one funnel
+  - id: life2film
+    platform: ios
+    bundle_id: com.life2film.DirectorOS
+    app_id: "6761656888"
+    site: life2film
+  - id: facealarm
+    platform: ios
+    bundle_id: com.facealarm.app
+    app_id: "6758454962"
+    site: facealarm
+  - id: photosweep
+    platform: ios
+    bundle_id: co.superduperai.photosweep
+    app_id: "6794369239"
+  - id: carettafriends
+    platform: ios
+    bundle_id: com.carettafriends.app
+    app_id: "6794324877"
+  - id: currencypal
+    platform: ios
+    bundle_id: co.superduperai.currencypal
+    app_id: "6759005730"
+  - id: jawharpsynth
+    platform: ios
+    bundle_id: co.superduperai.jawharpsynth
+    app_id: "6758465213"
+  - id: driveandblock
+    platform: ios
+    bundle_id: app.driveandblock
+    app_id: "6759738953"
+  - id: receiptbrain
+    platform: ios
+    bundle_id: co.superduperai.ReceiptBrain
+    app_id: "6759008528"
+  - id: superfinans
+    platform: ios
+    bundle_id: co.superduperai.SuperFinans
+    app_id: "6759007613"
+  - id: swift-terminal
+    platform: ios
+    bundle_id: co.superduperai.swift-terminal
+    app_id: "6758515520"
+  - id: kissmytask
+    platform: ios
+    bundle_id: co.superduperai.KissMyTask
+    app_id: "6758514439"

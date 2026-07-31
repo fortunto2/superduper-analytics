@@ -1,0 +1,32 @@
+{
+  "name": "superduper-analytics",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "description": "One ingest for every site and app — Cloudflare Workers, Analytics Engine and R2 Iceberg",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "hono": "^4",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.20",
+    "@cloudflare/workers-types": "^5",
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^4.1",
+    "wrangler": "^4.117",
+    "yaml": "^2"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
