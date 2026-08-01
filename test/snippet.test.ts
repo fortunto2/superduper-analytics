@@ -48,7 +48,8 @@ describe("the snippet as shipped", () => {
 
 describe("the snippet running", () => {
   /** Minimal DOM: enough for the snippet to believe it is on a page. */
-  function run(source: string | undefined) {
+  function run(source: string | undefined, opts: { viaCurrentScript?: boolean } = {}) {
+    const viaCurrentScript = opts.viaCurrentScript !== false;
     const sent: unknown[] = [];
     const listeners: Record<string, (() => void)[]> = {};
     const scriptEl = { dataset: source === undefined ? {} : { source } };
@@ -62,7 +63,8 @@ describe("the snippet running", () => {
     } as Record<string, unknown>;
 
     const doc = {
-      currentScript: scriptEl,
+      currentScript: viaCurrentScript ? scriptEl : null,
+      querySelector: (sel: string) => (sel.includes("sda.js") ? scriptEl : null),
       referrer: "https://news.ycombinator.com/item?id=1",
       visibilityState: "visible",
       addEventListener: (type: string, fn: () => void) => {
@@ -142,6 +144,15 @@ describe("the snippet running", () => {
     const { sent, hide } = run(undefined);
     hide();
     expect(sent).toHaveLength(0);
+  });
+
+  it("finds its own tag when currentScript is null, as with next/script", () => {
+    // next/script builds the element in JavaScript; a snippet that only reads currentScript
+    // would silently do nothing on every Next site.
+    const { sent, hide } = run("superduperai", { viaCurrentScript: false });
+    hide();
+    const batch = sent[0] as { events: { source: string }[] };
+    expect(batch.events[0]?.source).toBe("superduperai");
   });
 
   it("sends nothing until the page is hidden, so it never competes with the page", () => {

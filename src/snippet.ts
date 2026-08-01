@@ -29,6 +29,11 @@
  * SPA ROUTES COUNT. `pushState` and `replaceState` are wrapped, because otherwise a
  * single-page site reports one visit and then silence forever.
  *
+ * IT DOES NOT TRUST `document.currentScript`. Host frameworks inject scripts their own way —
+ * `next/script` builds the element in JavaScript — and a snippet that reads its configuration
+ * from `currentScript` alone silently does nothing when it guesses wrong. The fallback finds
+ * its own tag by `src`, so the same one line works in plain HTML, Astro and Next alike.
+ *
  * The comments live here rather than inside the string because the string is what every
  * visitor downloads. Keeping them out is the difference between 2.2 KB and 1.5 KB.
  */
@@ -44,7 +49,8 @@ export const SNIPPET_CACHE_SECONDS = 3600;
  * what a visitor executes. What you read here is what runs.
  */
 export const SNIPPET = `(function(w,d){
-var s=d.currentScript,src=s&&s.dataset.source;
+var s=d.currentScript||d.querySelector('script[data-source][src*="/sda.js"]');
+var src=s&&s.dataset.source;
 if(!src){console.warn("[sda] missing data-source");return}
 var api=(s&&s.dataset.endpoint)||"https://analytics.superduperai.co/e";
 var ver=(s&&s.dataset.version)||undefined;
