@@ -14,20 +14,35 @@ export type SourceTotal = {
   source: string;
   platform: string;
   events: number;
+  page_views: number;
+  /**
+   * DISTINCT over stored rows. Analytics Engine samples, and a sampled-away row takes its
+   * `anon` with it — no weighting brings back a value that was never written. So this is a
+   * LOWER BOUND, exact only while `max_sample` is 1. Real unique counts come from the edge.
+   */
+  people_seen: number;
+  /** 1 means nothing was dropped; above 1 means `people_seen` understates. */
+  max_sample: number;
 };
+
+export type DayTotal = { day: string; events: number };
 
 export type Stats = {
   window_days: number;
   /** Always true, and stated in the payload so a consumer cannot forget what these are. */
   sampled: true;
   total_events: number;
+  total_page_views: number;
+  /** True when sampling actually dropped rows, i.e. when `people_seen` is understated. */
+  sampling_active: boolean;
   sources: SourceTotal[];
+  daily: DayTotal[];
 };
 
 export type StatsFailure = { status: 400 | 500 | 502; body: { error: string } & Record<string, unknown> };
 
 /** Only what the SQL API is actually asked for; the rest of its response is ignored. */
-type SqlResponse = { data?: { source?: unknown; platform?: unknown; events?: unknown }[] };
+type SqlResponse = { data?: Record<string, unknown>[] };
 
 const SQL_ENDPOINT = "https://api.cloudflare.com/client/v4/accounts";
 
@@ -46,7 +61,12 @@ export function buildQuery(dataset: string, days: number): string {
     "  blob1 AS source,",
     "  blob2 AS platform,",
     // count() would undercount silently — Analytics Engine samples.
-    "  sum(_sample_interval) AS events",
+    "  sum(_sample_interval) AS events,",
+    "  sum(if(blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
+    // `uniq()` does not exist in this dialect; `count(DISTINCT …)` does. It is a lower bound
+    // under sampling, which is why max_sample rides along to say when to distrust it.
+    "  count(DISTINCT blob8) AS people_seen,",
+    "  max(_sample_interval) AS max_sample",
     `FROM ${dataset}`,
     `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
     "GROUP BY source, platform",
@@ -68,7 +88,33 @@ export function parseRows(payload: unknown): SourceTotal[] {
     source: String(row.source ?? ""),
     platform: String(row.platform ?? ""),
     events: Number(row.events ?? 0),
+    page_views: Number(row.page_views ?? 0),
+    people_seen: Number(row.people_seen ?? 0),
+    max_sample: Number(row.max_sample ?? 1),
   }));
+}
+
+/** Events per day, for the trend line. Same weighting rule as everything else. */
+export function buildDailyQuery(dataset: string, days: number): string {
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+  }
+  return [
+    "SELECT",
+    "  toDate(timestamp) AS day,",
+    "  sum(_sample_interval) AS events",
+    `FROM ${dataset}`,
+    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
+    "GROUP BY day",
+    "ORDER BY day",
+    "FORMAT JSON",
+  ].join("\n");
+}
+
+export function parseDays(payload: unknown): DayTotal[] {
+  const rows = (payload as { data?: { day?: unknown; events?: unknown }[] } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({ day: String(row.day ?? ""), events: Number(row.events ?? 0) }));
 }
 
 export type StatsEnv = {
@@ -108,30 +154,41 @@ export async function fetchStats(
     };
   }
 
-  const response = await fetch(`${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID}/analytics_engine/sql`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` },
-    body: buildQuery(env.DATASET, days),
-  });
+  const url = `${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID}/analytics_engine/sql`;
+  const ask = (sql: string) =>
+    fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.CF_API_TOKEN ?? ""}` },
+      body: sql,
+    });
 
-  if (!response.ok) {
+  const [totals, daily] = await Promise.all([
+    ask(buildQuery(env.DATASET, days)),
+    ask(buildDailyQuery(env.DATASET, days)),
+  ]);
+
+  if (!totals.ok) {
     // The upstream text is safe to relay — it never echoes the token — and without it every
     // failure here looks identical from the outside.
     return {
       ok: false,
       status: 502,
-      body: { error: "sql_api_failed", status: response.status, detail: await response.text() },
+      body: { error: "sql_api_failed", status: totals.status, detail: await totals.text() },
     };
   }
 
-  const sources = parseRows(await response.json());
+  const sources = parseRows(await totals.json());
   return {
     ok: true,
     stats: {
       window_days: days,
       sampled: true,
       total_events: sources.reduce((sum, row) => sum + row.events, 0),
+      total_page_views: sources.reduce((sum, row) => sum + row.page_views, 0),
+      sampling_active: sources.some((row) => row.max_sample > 1),
       sources,
+      // The trend is decoration next to the totals: if it fails, show the numbers anyway.
+      daily: daily.ok ? parseDays(await daily.json()) : [],
     },
   };
 }

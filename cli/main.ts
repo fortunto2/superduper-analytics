@@ -50,9 +50,12 @@ function fail(message: string): never {
 function gen(): void {
   const registryPath = flag("registry", DEFAULT_REGISTRY);
   const outPath = flag("out", DEFAULT_GENERATED);
-  const ids = sourceIdsOf(readRegistry(registryPath));
-  writeFileSync(outPath, renderGenerated(ids));
-  console.log(`${outPath} — ${ids.length} sources from ${registryPath}`);
+  const registry = readRegistry(registryPath);
+  writeFileSync(outPath, renderGenerated(registry));
+  console.log(
+    `${outPath} — ${sourceIdsOf(registry).length} sources, ${registry.sites.length} sites ` +
+      `from ${registryPath}`,
+  );
 }
 
 function check(): void {
@@ -61,7 +64,7 @@ function check(): void {
   const registry = readRegistry(registryPath);
   const problems = checkRegistry(registry);
 
-  const expected = renderGenerated(sourceIdsOf(registry));
+  const expected = renderGenerated(registry);
   const actual = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";
   if (actual !== expected) problems.push(`${outPath} is stale — run \`make gen\``);
 

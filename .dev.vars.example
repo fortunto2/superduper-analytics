@@ -18,3 +18,8 @@ CF_API_TOKEN=placeholder-not-a-real-token
 # which is a feature — it is the panic button if one ever needs to stop being derivable.
 #   openssl rand -hex 32
 ANON_SALT=replace-with-openssl-rand-hex-32
+
+# Shared key gating the dashboard and /v1/*. Unset means those routes refuse outright — the
+# read side shows the business and must never be public by accident. The real answer is
+# Cloudflare Access in front of / and /v1/*; this is the stopgap until that is configured.
+DASHBOARD_KEY=replace-with-openssl-rand-hex-16

@@ -50,9 +50,14 @@ describe("buildQuery", () => {
 
 describe("parseRows", () => {
   it("coerces the string aggregates the SQL API returns", () => {
-    expect(parseRows({ data: [{ source: "books", platform: "web", events: "42" }] })).toEqual([
-      { source: "books", platform: "web", events: 42 },
+    const row = { source: "books", platform: "web", events: "42", page_views: "40" };
+    expect(parseRows({ data: [row] })).toEqual([
+      { source: "books", platform: "web", events: 42, page_views: 40, people_seen: 0, max_sample: 1 },
     ]);
+  });
+
+  it("assumes no sampling when max_sample is missing, rather than assuming the worst", () => {
+    expect(parseRows({ data: [{ source: "a", platform: "web" }] })[0]?.max_sample).toBe(1);
   });
 
   it.each([[null], [{}], [{ data: null }], ["nonsense"]])(
@@ -94,29 +99,31 @@ describe("fetchStats against a stubbed SQL API", () => {
     }
   };
 
-  it("totals the rows and marks the result as sampled", async () => {
+  it("totals the rows and reports whether sampling was active", async () => {
     const result = await withFetch(
       async () =>
         Response.json({
           data: [
-            { source: "superduperai", platform: "web", events: "100" },
-            { source: "live2play", platform: "ios", events: "23" },
+            { source: "superduperai", platform: "web", events: "100", page_views: "90", people_seen: "7", max_sample: "15" },
+            { source: "live2play", platform: "ios", events: "23", page_views: "0", people_seen: "3", max_sample: "1" },
           ],
         }),
       () => fetchStats(env, 7),
     );
-    expect(result).toEqual({
-      ok: true,
-      stats: {
-        window_days: 7,
-        sampled: true,
-        total_events: 123,
-        sources: [
-          { source: "superduperai", platform: "web", events: 100 },
-          { source: "live2play", platform: "ios", events: 23 },
-        ],
-      },
-    });
+    if (!result.ok) throw new Error("expected success");
+    expect(result.stats.total_events).toBe(123);
+    expect(result.stats.total_page_views).toBe(90);
+    // One group was sampled, so the whole payload is flagged — the dashboard must say so.
+    expect(result.stats.sampling_active).toBe(true);
+  });
+
+  it("does not flag sampling when every group kept every row", async () => {
+    const result = await withFetch(
+      async () => Response.json({ data: [{ source: "books", events: "5", max_sample: "1" }] }),
+      () => fetchStats(env, 7),
+    );
+    if (!result.ok) throw new Error("expected success");
+    expect(result.stats.sampling_active).toBe(false);
   });
 
   it("sends the token as a bearer and the query as the body", async () => {

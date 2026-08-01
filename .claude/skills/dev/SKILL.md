@@ -10,9 +10,10 @@ allowed-tools: Read, Grep, Glob, Bash, Write, Edit
 
 # superduper-analytics — dev workflow
 
-**Steps 1–3 are done and live at `https://analytics.superduperai.co`; step 4 is the snippets.**
-`POST /e` validates, refuses unregistered sources, enriches and writes; `GET /v1/stats` reads
-back over the SQL API. Read
+**Live at `https://analytics.superduperai.co`.** Ingest, the sink, the read API, the web
+counter (`/sda.js`) and the dashboard (`/`) all work. **The counter is installed on no site
+yet** — the edge sees ~91k people a month and we record none of them; `docs/install.md` is the
+one-liner. Left: the Swift snippet, then v2. Read
 [docs/prd.md](../../../docs/prd.md) before writing code — it records what was rejected and why,
 which is the part that is expensive to rediscover, and
 [docs/QUALITY_SCORE.md](../../../docs/QUALITY_SCORE.md) for what is thin right now.
@@ -45,7 +46,7 @@ make tail         # production logs
    `writeDataPoint` returns `void` and is already non-blocking. `waitUntil` is for Pipelines.
 3. ~~`GET /v1/stats` over the SQL API.~~ done — needs the `CF_ACCOUNT_ID` and `CF_API_TOKEN`
    secrets; every aggregate is weighted by `_sample_interval`, enforced in `buildQuery`.
-4. Web snippet (<2 KB, no cookies), then the Swift snippet. Both post to
+4. ~~Web snippet.~~ done — served at `/sda.js`. Next: the Swift snippet, posting to
    `https://analytics.superduperai.co/e`.
 5. v2: Pipelines → R2 Iceberg, then ClickHouse/DuckDB example queries.
 
@@ -56,9 +57,12 @@ Each step is independently verifiable. Do not start the next before the previous
    `double1..double20` by position. Append to `BLOB_SLOTS` / `DOUBLE_SLOTS`, never reorder or
    repurpose — historical data would silently start meaning something else. A slot without an
    `EnrichedEvent` field of the same name fails `tsc`, which is what keeps this honest.
-2. **Analytics Engine samples: `count()` undercounts.** Use `sum(_sample_interval)`, and the
-   weighted form of every other aggregate. No error is raised — just a smaller number. Table in
-   ARCHITECTURE.md.
+2. **Analytics Engine samples: `count()` undercounts and DISTINCT is unrecoverable.** Use
+   `sum(_sample_interval)` and the weighted form of every aggregate — no error is raised, just
+   a smaller number. Weighting cannot rescue uniques: a dropped row takes its `anon` with it,
+   so "how many people" comes from `src/zones.ts`. Sampling was live at 259 events. Also:
+   `uniq()` does not exist, `ORDER BY`/`GROUP BY` must name the alias, and `FORMAT JSONCompact`
+   is not a thing. Table in ARCHITECTURE.md.
 3. **Analytics Engine deletes after 3 months.** Anything historical comes from the archive.
    Never let a chart fall back between stores; it would change meaning mid-axis.
 4. **The registry is the only way in.** Nothing in the API or dashboard may create a source.
@@ -66,7 +70,8 @@ Each step is independently verifiable. Do not start the next before the previous
 ## Money
 v1 is **$0** — Analytics Engine and the ingest both fit the Workers Free plan (100k data
 points and 10k read queries a day; 100k Worker requests a day). Workers Paid ($5) is needed
-only for Pipelines, i.e. the v2 archive, and there is a free alternative on the table (PRD §4).
+only for Pipelines, i.e. the v2 archive (PRD §4 — decided: Pipelines, since the $5 is already
+being paid).
 Free-plan CPU is **10 ms per invocation**; a full 250-event batch measures p99 2.5 ms, so the
 hot path has roughly 4× headroom and no more.
 

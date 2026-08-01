@@ -5,10 +5,13 @@ One ingest for every site and app I run, on Cloudflare, with the history in an o
 **Read [docs/prd.md](docs/prd.md) first — it is the brief, and it explains what was rejected
 and why.** Module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**State: steps 1–3 done and deployed at `https://analytics.superduperai.co`.** `POST /e`
-validates, refuses unregistered sources, enriches and writes to Analytics Engine;
-`GET /v1/stats` reads back through the SQL API. Next is step 4, the web and Swift snippets.
-Ingest has **no authentication** — see ARCHITECTURE.md.
+**State: live at `https://analytics.superduperai.co`.** Ingest, the Analytics Engine sink, the
+read API, the web counter (`/sda.js`) and the dashboard (`/`) all work in production. Left:
+the Swift snippet, then v2's Iceberg archive.
+
+The counter is **installed nowhere yet** — the edge sees ~91k people a month across the zones
+and we record none of them. `docs/install.md` is the one-liner. Ingest has **no
+authentication**; the dashboard and `/v1/*` are behind `DASHBOARD_KEY` — see ARCHITECTURE.md.
 
 That host is effectively permanent: it goes into every site, every app and every privacy page.
 Changing it later means editing all of them.
@@ -34,8 +37,13 @@ installed.
 src/schema.ts        the event contract — everything derives from it
 src/ingest.ts        validate → enrich. Pure: no I/O, no clock, no Cloudflare types
 src/registry.ts      is this source allowed — reads the generated list, never YAML
+src/anon.ts          the per-day edge-derived id. Nothing is stored on the device
+src/snippet.ts       the web counter, served at /sda.js. A string, not a build artefact
 src/sinks/           where events land. Dumb by design: positions, nothing else
 src/stats.ts         reads the hot store over the SQL API. Never writes
+src/zones.ts         Cloudflare's own edge analytics. Where "how many people" comes from
+src/overview.ts      assembles both for the dashboard — never sums them
+src/dashboard.ts     the page at /. One self-contained string, no framework
 src/index.ts         Worker entry: routing, CORS, auth. Thin by design
 registry/sources.yaml  every site and app; adding one is ONE COMMIT
 cli/                 gen · check · replay; how `make integration` works without a network
@@ -51,9 +59,11 @@ first has drifted.
    to `blob1..blob20` / `double1..double20`, and every query refers to them by position.
    Append only — reordering silently changes what historical data means. A slot without a
    matching `EnrichedEvent` field is a compile error, which is what keeps this enforceable.
-2. **Analytics Engine samples: `count()` is wrong.** Use `sum(_sample_interval)`, and the
-   weighted form of every other aggregate. The plain ones return a smaller number, not an
-   error. Table in ARCHITECTURE.md.
+2. **Analytics Engine samples: `count()` is wrong, and unique counts are impossible.** Use
+   `sum(_sample_interval)` and the weighted form of every aggregate — the plain ones return a
+   smaller number, not an error. Weighting cannot rescue DISTINCT: a dropped row takes its
+   `anon` with it, so "how many people" comes from `src/zones.ts`, never from our events.
+   Sampling was already active at 259 events. Table in ARCHITECTURE.md.
 3. **Analytics Engine deletes after 3 months.** Anything historical must come from the archive.
    Never let a chart quietly fall back between the two.
 4. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or

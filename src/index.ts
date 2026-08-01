@@ -11,7 +11,9 @@
  */
 import { Hono } from "hono";
 import { deriveAnon } from "./anon";
+import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
+import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
 import { SNIPPET, SNIPPET_CACHE_SECONDS } from "./snippet";
@@ -39,6 +41,43 @@ const DEFAULT_WINDOW_DAYS = 7;
 const STATS_CACHE_SECONDS = 60;
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+/**
+ * The read side shows the business: traffic per property, which products are alive. It must
+ * not be world-readable.
+ *
+ * This is a shared key, not authentication — the honest answer is Cloudflare Access in front
+ * of `/` and `/v1/*`, which is free at this scale, is real SSO, and needs no code. Until that
+ * is configured this keeps the numbers off the open internet, and when DASHBOARD_KEY is unset
+ * it refuses rather than defaulting to open: a dashboard that is public by accident is worse
+ * than one that is broken by configuration.
+ *
+ * `/e` and `/sda.js` are deliberately outside this — a beacon cannot carry a secret, and a
+ * script tag must be loadable by anyone.
+ */
+function authorized(c: { env: Bindings; req: { query: (k: string) => string | undefined; header: (k: string) => string | undefined } }): boolean {
+  const expected = c.env.DASHBOARD_KEY;
+  if (expected === undefined || expected === "") return false;
+  const given = c.req.query("k") ?? c.req.header("authorization")?.replace(/^Bearer /, "");
+  return given === expected;
+}
+
+app.use("/", async (c, next) => {
+  if (!authorized(c)) return c.text("not found", 404);
+  await next();
+});
+
+app.use("/v1/*", async (c, next) => {
+  if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
+  await next();
+});
+
+/** The dashboard. Never indexed, never cached publicly — it is one operator's view. */
+app.get("/", (c) => {
+  c.header("content-type", "text/html; charset=utf-8");
+  c.header("cache-control", "private, no-store");
+  return c.body(DASHBOARD);
+});
 
 app.get("/health", (c) => c.json({ ok: true, stage: "ingest" }));
 
@@ -110,7 +149,30 @@ app.get("/v1/stats", async (c) => {
   if (!result.ok) return c.json(result.body, result.status);
 
   const response = c.json(result.stats);
-  response.headers.set("cache-control", `public, max-age=${STATS_CACHE_SECONDS}`);
+  response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
+  c.executionCtx.waitUntil(cache.put(c.req.raw, response.clone()));
+  return response;
+});
+
+/**
+ * Everything the dashboard draws, in one round trip: our events plus Cloudflare's edge counts,
+ * assembled but never summed. Cached for the same reason /v1/stats is — read queries are
+ * metered, and this one makes three upstream calls rather than one.
+ */
+app.get("/v1/overview", async (c) => {
+  const cache = caches.default;
+  const cached = await cache.match(c.req.raw);
+  if (cached !== undefined) return cached;
+
+  const result = await fetchOverview(
+    c.env,
+    Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS),
+    Date.now(),
+  );
+  if (!result.ok) return c.json(result.body, result.status as 400 | 500 | 502);
+
+  const response = c.json(result.overview);
+  response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
   c.executionCtx.waitUntil(cache.put(c.req.raw, response.clone()));
   return response;
 });

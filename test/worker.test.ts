@@ -81,7 +81,9 @@ describe("POST /e", () => {
 });
 
 describe("GET /v1/stats", () => {
-  const stats = (query: string) => SELF.fetch(`https://analytics.example/v1/stats${query}`);
+  // DASHBOARD_KEY comes from .dev.vars via the wrangler config the pool reads.
+  const stats = (query: string) =>
+    SELF.fetch(`https://analytics.example/v1/stats${query}&k=${env.DASHBOARD_KEY}`);
 
   it("refuses a window past the hot store's retention", async () => {
     const res = await stats("?days=999");
@@ -93,6 +95,37 @@ describe("GET /v1/stats", () => {
     const res = await stats("?days=lots");
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: "bad_window" });
+  });
+});
+
+describe("the read side is not public", () => {
+  it("hides the dashboard behind the key, as a 404 rather than a 401", async () => {
+    // 404 on purpose: an unauthenticated visitor should not learn a dashboard exists here.
+    expect((await SELF.fetch("https://analytics.example/")).status).toBe(404);
+  });
+
+  it("serves the dashboard with the key", async () => {
+    const res = await SELF.fetch(`https://analytics.example/?k=${env.DASHBOARD_KEY}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(res.headers.get("cache-control")).toContain("no-store");
+  });
+
+  it("refuses /v1/* without the key", async () => {
+    expect((await SELF.fetch("https://analytics.example/v1/stats")).status).toBe(401);
+    expect((await SELF.fetch("https://analytics.example/v1/overview")).status).toBe(401);
+  });
+
+  it("accepts a bearer token as well, for scripts", async () => {
+    const res = await SELF.fetch("https://analytics.example/v1/stats?days=999", {
+      headers: { authorization: `Bearer ${env.DASHBOARD_KEY}` },
+    });
+    expect(res.status).toBe(400); // reached the handler, refused on the window
+  });
+
+  it("leaves ingest and the snippet open — a beacon cannot carry a secret", async () => {
+    expect((await post(batch(pageView))).status).toBe(204);
+    expect((await SELF.fetch("https://analytics.example/sda.js")).status).toBe(200);
   });
 });
 

@@ -83,17 +83,36 @@ export function checkRegistry(registry: RegistryFile): string[] {
   return problems;
 }
 
+/** Sites with their hostname, so the Worker can line a site up against its Cloudflare zone. */
+export function sitesOf(registry: RegistryFile): { id: string; host: string }[] {
+  return registry.sites
+    .map((site) => ({ id: site.id, host: new URL(site.url).host }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /** The exact contents of src/registry.generated.ts. Compared byte-for-byte by `check`. */
-export function renderGenerated(sourceIds: string[]): string {
-  const lines = sourceIds.map((id) => `  ${JSON.stringify(id)},`).join("\n");
+export function renderGenerated(registry: RegistryFile): string {
+  const ids = sourceIdsOf(registry)
+    .map((id) => `  ${JSON.stringify(id)},`)
+    .join("\n");
+  const sites = sitesOf(registry)
+    .map((s) => `  { id: ${JSON.stringify(s.id)}, host: ${JSON.stringify(s.host)} },`)
+    .join("\n");
   return `// GENERATED FILE — DO NOT EDIT.
 // Source of truth is registry/sources.yaml. Regenerate with \`make gen\`; \`make check\` fails
 // if this file has drifted from the registry.
 //
 // Committed on purpose: these are public identifiers, and a clean checkout must build without
 // running a generator first.
+
+/** Every id that may appear as \`source\` on an event — sites and apps, deduplicated. */
 export const SOURCE_IDS = [
-${lines}
+${ids}
+] as const;
+
+/** Sites only, with the hostname used to match a site against its Cloudflare zone. */
+export const SITES = [
+${sites}
 ] as const;
 `;
 }

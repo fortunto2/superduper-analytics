@@ -13,9 +13,12 @@ Scale: A solid · B works, rough edges · C stub · D absent.
 | CLI | B | `gen`, `check`, `replay` real and offline; `sync` still a stub |
 | Analytics Engine sink | B | Positions pinned by hand-written tests; deployed and writing |
 | Pipelines → Iceberg | D | v2 — Pipelines, decided; see PRD §4 |
-| Stats read path | B | `GET /v1/stats` deployed, guarded and **proven end to end** — 256 events written and read back through the Worker |
-| Dashboard | D | Not started; `/v1/stats` is the JSON it will render |
-| Tests | B | 88 across ingest, the sink, stats SQL, the HTTP contract and the registry |
+| Stats read path | B | `/v1/stats` and `/v1/overview` deployed, guarded and **proven end to end** |
+| Unique visitors | C | Not answerable from our events — sampling destroys DISTINCT. Comes from Cloudflare zone analytics instead |
+| Dashboard | B | Live at `/`, behind `DASHBOARD_KEY`. Coverage panel, trend, both tables; validated palette, both themes |
+| Web counter | B | `/sda.js`, 1519 B, proven in a real browser. **Installed on zero sites** |
+| Swift snippet | D | Not started |
+| Tests | B | 118 across ingest, the sink, stats SQL, anon, the snippet, the HTTP contract and the registry |
 | Ingest auth | D | **Open to writes on purpose** — see ARCHITECTURE.md. Web needs the origin allow-list, apps need write keys |
 | Lint | D | `make lint` and `make format` fail — neither eslint nor prettier is installed |
 
@@ -29,25 +32,25 @@ Both secrets are set. `CF_API_TOKEN` was pasted into a chat transcript during se
 **should be rotated**; it is read-only analytics, so the exposure is bounded, but it currently
 carries more than this Worker needs (see below).
 
-**Next:** step 4 — the web snippet (<2 KB, no cookies) and the Swift snippet, both posting to
-`https://analytics.superduperai.co/e`. Things that will trip it:
+**Next: install the counter.** Everything is built and nothing is measured — the edge sees
+roughly 91,000 people a month across the zones and we record none of them. `docs/install.md`
+is one line per site; `life2film.com` alone is 20k page views a month at 0% coverage. The
+dashboard's "Counters live 1 / 13" is the number to move.
 
-1. **CORS does not exist yet.** A browser beacon needs either the origin allow-list from
-   `sites[].url` or a `sendBeacon` call with a `text/plain` body, which is a simple request
-   and needs no preflight. Ingest already accepts `text/plain` for this reason.
-2. **The snippet must set `anon` itself, or nothing will.** Deriving it server-side needs a
-   salted per-day hash of IP + user agent and a secret that does not exist yet.
-3. **Read queries are metered** — 10k/day free. `/v1/stats` caches for 60s at the edge, which
-   only works because the Worker is on a custom domain; the Cache API is a no-op on
-   `*.workers.dev`.
-4. **The rollout has a finish line, and it is measurable.** Cloudflare's zone analytics already
-   counts every registered site for free (ARCHITECTURE.md). Edge `pageViews` against our
-   `page_viewed` per site is what distinguishes "no visitors" from "no snippet", and it is the
-   only honest way to know the 13-site rollout is done. Today the edge sees ~1000 page views a
-   day on superduperai.co alone and we record none of them.
+After that: the Swift snippet, then v2's archive.
+
+Sharp edges for whoever picks this up:
+
+1. **`uniq()` does not exist** in the Analytics Engine dialect, and `count(DISTINCT …)` is a
+   lower bound under sampling. Do not build a "unique visitors" chart on our events.
+2. **`ORDER BY`/`GROUP BY` must name the alias**, and `FORMAT JSONCompact` does not exist.
+3. **Read queries are metered** — 10k/day free. `/v1/overview` makes three upstream calls and
+   is cached 60s at the edge, which works only on a custom domain.
+4. **`DASHBOARD_KEY` is a stopgap, not authentication.** Cloudflare Access in front of `/` and
+   `/v1/*` is free at this scale, is real SSO, and needs no code.
 
 **Token hygiene, open:** `CF_API_TOKEN` was created from the "Read analytics and logs"
 template, so it carries Workers Observability, Zone Logs and Zone Analytics on **all accounts
 and all zones**. The ingest Worker needs only `Account · Account Analytics · Read`. Zone
-Analytics is needed too *if* the coverage panel above gets built — but scoped to the ten
-zones, not to "all". Rotate and narrow.
+Analytics is needed too — the coverage panel depends on it — but scoped to the ten zones,
+not to "all accounts, all zones". Rotate and narrow.
