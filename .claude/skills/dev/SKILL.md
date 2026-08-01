@@ -10,8 +10,9 @@ allowed-tools: Read, Grep, Glob, Bash, Write, Edit
 
 # superduper-analytics — dev workflow
 
-**Steps 1–2 are done; step 3 is `GET /v1/stats`.** `POST /e` validates, refuses unregistered
-sources, enriches at the edge and writes to Analytics Engine. Read
+**Steps 1–3 are done and live at `https://analytics.superduperai.co`; step 4 is the snippets.**
+`POST /e` validates, refuses unregistered sources, enriches and writes; `GET /v1/stats` reads
+back over the SQL API. Read
 [docs/prd.md](../../../docs/prd.md) before writing code — it records what was rejected and why,
 which is the part that is expensive to rediscover, and
 [docs/QUALITY_SCORE.md](../../../docs/QUALITY_SCORE.md) for what is thin right now.
@@ -42,8 +43,10 @@ make tail         # production logs
 1. ~~`POST /e` — validate with `Batch`, reject unknown `source`, return 204. No sinks.~~ done
 2. ~~Analytics Engine sink, fields mapped by `BLOB_SLOTS`.~~ done — **no `ctx.waitUntil`**:
    `writeDataPoint` returns `void` and is already non-blocking. `waitUntil` is for Pipelines.
-3. `GET /v1/stats` over the SQL API — proves the round trip end to end.
-4. Web snippet (<2 KB, no cookies), then the Swift snippet.
+3. ~~`GET /v1/stats` over the SQL API.~~ done — needs the `CF_ACCOUNT_ID` and `CF_API_TOKEN`
+   secrets; every aggregate is weighted by `_sample_interval`, enforced in `buildQuery`.
+4. Web snippet (<2 KB, no cookies), then the Swift snippet. Both post to
+   `https://analytics.superduperai.co/e`.
 5. v2: Pipelines → R2 Iceberg, then ClickHouse/DuckDB example queries.
 
 Each step is independently verifiable. Do not start the next before the previous one is.

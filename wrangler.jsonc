@@ -5,11 +5,34 @@
   "compatibility_date": "2026-07-31",
   "observability": { "enabled": true },
 
+  // Declared here rather than left in the dashboard, so a deploy asserts it and the repo stays
+  // the truth. This is the host every snippet points at and the one named in the privacy text
+  // on every property, so it is effectively permanent — changing it later means editing every
+  // site and every app.
+  "routes": [{ "pattern": "analytics.superduperai.co", "custom_domain": true }],
+
+  // Declaring routes already turns this off by default; stated explicitly so the single
+  // canonical host is a decision rather than a side effect of another setting.
+  "workers_dev": false,
+
+  // The Cache API only caches on a custom domain — on *.workers.dev it silently does nothing,
+  // which would quietly spend the metered SQL read budget on every dashboard refresh.
+
   // Hot store. Free, unlimited cardinality, SQL API — but Cloudflare DELETES it after
   // 3 months, which is exactly why the Iceberg archive below exists.
   "analytics_engine_datasets": [
     { "binding": "EVENTS", "dataset": "superduper_events" }
-  ]
+  ],
+
+  // The binding cannot tell you the dataset name at runtime, and the SQL API needs it as a
+  // table name. Declared here so it is stated once, next to the binding it must match.
+  "vars": {
+    "DATASET": "superduper_events"
+  }
+
+  // Secrets, set with `wrangler secret put` and never committed — see .dev.vars.example:
+  //   CF_ACCOUNT_ID  the account the dataset lives in
+  //   CF_API_TOKEN   an API token with Account Analytics: Read, for the SQL API
 
   // Cold store — added in v2. Pipelines needs Workers Paid; wire it with:
   //   wrangler pipelines setup

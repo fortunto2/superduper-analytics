@@ -11,26 +11,35 @@ Scale: A solid · B works, rough edges · C stub · D absent.
 | Architecture doc | B | Boundaries and the two-sink rationale are clear |
 | Ingest Worker | B | `POST /e` validates, refuses unknown sources, enriches, writes. No auth |
 | CLI | B | `gen`, `check`, `replay` real and offline; `sync` still a stub |
-| Analytics Engine sink | B | Positions pinned by hand-written tests; never exercised against the real dataset |
-| Pipelines → Iceberg | D | v2, and the approach is an open fork — see PRD §4 |
-| Dashboard | D | Not started — step 3 |
-| Tests | B | 63 across ingest, the sink, the HTTP contract and the registry |
+| Analytics Engine sink | B | Positions pinned by hand-written tests; deployed and writing |
+| Pipelines → Iceberg | D | v2 — Pipelines, decided; see PRD §4 |
+| Stats read path | C | `GET /v1/stats` deployed and guarded, but **the round trip is still unproven** — the SQL API secrets are not set, so nothing has ever been read back |
+| Dashboard | D | Not started; `/v1/stats` is the JSON it will render |
+| Tests | B | 88 across ingest, the sink, stats SQL, the HTTP contract and the registry |
 | Ingest auth | D | **Open to writes on purpose** — see ARCHITECTURE.md. Web needs the origin allow-list, apps need write keys |
 | Lint | D | `make lint` and `make format` fail — neither eslint nor prettier is installed |
 
-**Next:** step 3 — `GET /v1/stats` over the SQL API, which is the first thing that proves data
-actually landed. What it needs and what will trip it:
+**Blocking, before anything else:** the round trip has never run. `/v1/stats` answers
+`not_configured` in production because two secrets are unset:
 
-1. **Two secrets that do not exist yet:** a Cloudflare account id and an API token with
-   Account Analytics read. `wrangler secret put`, never the repo.
-2. **Every aggregate must be the weighted form.** `sum(_sample_interval)`, not `count()`. A
-   plain `count()` returns a plausible smaller number and no error, which is the worst
-   possible failure for a dashboard. Table in ARCHITECTURE.md.
-3. **Read queries are metered** — 10k/day free, 1M/month paid. A dashboard that queries per
-   page load needs caching before it needs features.
-4. **Never fall back to the archive mid-chart.** Analytics Engine holds three months; a chart
-   that silently stitches must instead stop.
-5. **`writeDataPoint` does not persist in local dev.** `wrangler dev` accepts the call and
-   stores nothing queryable, so the round trip can only be proven against a deployed Worker.
-   That is why step 2 is tested by spying on the binding rather than by reading data back —
-   and why step 3's first real check has to happen after `make deploy`.
+```sh
+pnpm wrangler secret put CF_ACCOUNT_ID   # 33dec9645c443eef5859b1e10ce71e01
+pnpm wrangler secret put CF_API_TOKEN    # Account > Account Analytics > Read
+```
+
+Until that returns real rows, "events are being collected" is an assumption. `writeDataPoint`
+does not persist in local dev — `wrangler dev` accepts the call and stores nothing queryable —
+so this cannot be checked any other way, and it is why the sink is tested by spying on the
+binding rather than by reading data back.
+
+**Next:** step 4 — the web snippet (<2 KB, no cookies) and the Swift snippet, both posting to
+`https://analytics.superduperai.co/e`. Things that will trip it:
+
+1. **CORS does not exist yet.** A browser beacon needs either the origin allow-list from
+   `sites[].url` or a `sendBeacon` call with a `text/plain` body, which is a simple request
+   and needs no preflight. Ingest already accepts `text/plain` for this reason.
+2. **The snippet must set `anon` itself, or nothing will.** Deriving it server-side needs a
+   salted per-day hash of IP + user agent and a secret that does not exist yet.
+3. **Read queries are metered** — 10k/day free. `/v1/stats` caches for 60s at the edge, which
+   only works because the Worker is on a custom domain; the Cache API is a no-op on
+   `*.workers.dev`.

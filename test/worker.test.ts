@@ -80,6 +80,22 @@ describe("POST /e", () => {
   });
 });
 
+describe("GET /v1/stats", () => {
+  const stats = (query: string) => SELF.fetch(`https://analytics.example/v1/stats${query}`);
+
+  it("refuses a window past the hot store's retention", async () => {
+    const res = await stats("?days=999");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "beyond_retention" });
+  });
+
+  it("refuses a window that is not a number at all", async () => {
+    const res = await stats("?days=lots");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "bad_window" });
+  });
+});
+
 describe("harness", () => {
   it("gets its bindings from wrangler.jsonc", () => {
     // Guards the vitest config, not the Worker: without this the pool would silently run with

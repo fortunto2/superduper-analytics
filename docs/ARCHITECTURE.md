@@ -13,7 +13,7 @@ the schema; the dashboard knows about queries. Nothing reaches back.
         ▲
   src/index.ts         routing, CORS, auth
         ▲
-  src/dashboard.ts     reads via the SQL API — never writes
+  src/stats.ts         reads via the SQL API — never writes
 ```
 
 ## Two sinks, on purpose

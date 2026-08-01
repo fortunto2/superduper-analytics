@@ -78,6 +78,13 @@ export const MAX_DOUBLES = 20;
 export const MAX_BLOB_BYTES = 16 * 1024;
 
 /**
+ * How far back the hot store can be asked about. Cloudflare deletes beyond this, so a query
+ * with a longer window must be refused rather than silently answered with a short one — a
+ * chart that quietly changes what it covers is worse than a chart that errors.
+ */
+export const RETENTION_DAYS = 90;
+
+/**
  * Reserved for the fixed slots below. Every one of them is length-capped by this schema and
  * they total 1246 characters at most; 5 KB covers that even if every character costs 4 bytes
  * in UTF-8. What remains is what `props` and `metrics` may occupy.

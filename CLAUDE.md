@@ -5,9 +5,13 @@ One ingest for every site and app I run, on Cloudflare, with the history in an o
 **Read [docs/prd.md](docs/prd.md) first — it is the brief, and it explains what was rejected
 and why.** Module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**State: steps 1–2 of the build order are done.** `POST /e` validates, refuses unregistered
-sources, enriches at the edge and writes to Analytics Engine. Next is `GET /v1/stats` over the
-SQL API, which closes the round trip. Ingest has **no authentication** — see ARCHITECTURE.md.
+**State: steps 1–3 done and deployed at `https://analytics.superduperai.co`.** `POST /e`
+validates, refuses unregistered sources, enriches and writes to Analytics Engine;
+`GET /v1/stats` reads back through the SQL API. Next is step 4, the web and Swift snippets.
+Ingest has **no authentication** — see ARCHITECTURE.md.
+
+That host is effectively permanent: it goes into every site, every app and every privacy page.
+Changing it later means editing all of them.
 
 **v1 costs $0** — Analytics Engine and the ingest both run on the Workers Free plan. Workers
 Paid is needed only for Pipelines (v2), and that decision has an open fork; see PRD §4.
@@ -31,6 +35,7 @@ src/schema.ts        the event contract — everything derives from it
 src/ingest.ts        validate → enrich. Pure: no I/O, no clock, no Cloudflare types
 src/registry.ts      is this source allowed — reads the generated list, never YAML
 src/sinks/           where events land. Dumb by design: positions, nothing else
+src/stats.ts         reads the hot store over the SQL API. Never writes
 src/index.ts         Worker entry: routing, CORS, auth. Thin by design
 registry/sources.yaml  every site and app; adding one is ONE COMMIT
 cli/                 gen · check · replay; how `make integration` works without a network

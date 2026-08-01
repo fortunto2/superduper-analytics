@@ -3,10 +3,11 @@
 One ingest endpoint for every site and app I run — on Cloudflare, with the history in Apache
 Iceberg so nobody can lock me out of it.
 
-> **Status: events are collected, not yet readable.** `POST /e` validates against the contract,
-> refuses any source not in the registry, enriches at the edge and writes to Analytics Engine.
-> Reading it back is the next step, the archive is v2, and there is no authentication yet.
-> Runs on the Workers **Free** plan — v1 costs nothing. Start at [docs/prd.md](docs/prd.md).
+> **Status: live at `https://analytics.superduperai.co`.** `POST /e` validates against the
+> contract, refuses any source not in the registry, enriches at the edge and writes to
+> Analytics Engine; `GET /v1/stats` reads it back. Next are the web and Swift snippets; the
+> archive is v2; there is no authentication yet. Fits the Workers **Free** plan — v1 costs
+> nothing. Start at [docs/prd.md](docs/prd.md).
 
 ## Why this exists
 

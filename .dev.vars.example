@@ -1,0 +1,15 @@
+# Copy to .dev.vars for local development. .dev.vars is gitignored and must stay that way.
+#
+# In production these are Worker secrets:
+#   pnpm wrangler secret put CF_ACCOUNT_ID
+#   pnpm wrangler secret put CF_API_TOKEN
+#
+# `wrangler types` reads the KEY NAMES from .dev.vars to type `Env`, so without this file
+# copied across, `make typecheck` will not know CF_API_TOKEN exists. The values here are
+# placeholders and are not secret.
+#
+# CF_API_TOKEN needs exactly one permission: Account > Account Analytics > Read.
+# Create it at https://dash.cloudflare.com/profile/api-tokens
+
+CF_ACCOUNT_ID=0000000000000000000000000000000
+CF_API_TOKEN=placeholder-not-a-real-token

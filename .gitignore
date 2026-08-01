@@ -3,6 +3,9 @@ dist/
 .wrangler/
 .dev.vars
 .dev.vars.*
+# ...but the example must be committed: `wrangler types` reads the KEY NAMES from .dev.vars to
+# type Env, so a clean checkout cannot typecheck without knowing what to copy.
+!.dev.vars.example
 *.log
 .DS_Store
 coverage/
