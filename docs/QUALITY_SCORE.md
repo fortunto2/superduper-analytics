@@ -30,3 +30,7 @@ actually landed. What it needs and what will trip it:
    page load needs caching before it needs features.
 4. **Never fall back to the archive mid-chart.** Analytics Engine holds three months; a chart
    that silently stitches must instead stop.
+5. **`writeDataPoint` does not persist in local dev.** `wrangler dev` accepts the call and
+   stores nothing queryable, so the round trip can only be proven against a deployed Worker.
+   That is why step 2 is tested by spying on the binding rather than by reading data back —
+   and why step 3's first real check has to happen after `make deploy`.

@@ -22,6 +22,30 @@ Existing options were each rejected for a concrete reason:
 | PostHog self-hosted | Officially *unsupported* by PostHog. Needs a 4 vCPU / 16 GB VM, and self-hosted gets **only free-tier features** — strictly worse than their Cloud free tier, plus ops. |
 | Counterscale | Right infrastructure (Workers + Analytics Engine), MIT, near-zero cost — but **pageviews only**, no custom events. Doesn't cover apps. |
 
+### Why TypeScript and not Rust
+
+Asked and answered with a measurement, not a preference. `workers-rs` does expose
+`AnalyticsEngineDataset`, so Rust is possible — it is just aimed at the wrong problem.
+
+- **Nothing here is CPU-bound.** A full 250-event batch — `JSON.parse` of 77 KB, zod
+  validation, enrichment, blob mapping — measures **p99 2.5 ms** against the strictest budget
+  in play (10 ms per invocation on the Free plan). A typical beacon carries one event. Rust
+  would turn 4× headroom into 40× and change the bill by nothing: cost is Worker invocations
+  and data points written, both language-independent.
+- **Rust on Workers means WASM** — a far bigger module and a worse cold start. On a beacon
+  path, cold start hurts the user; 2 ms of compute does not.
+- **The web snippet must be JavaScript.** Under 2 KB, in a browser. Half the client surface of
+  this project has no choice at all.
+- **The test harness is the deciding practicality.** `@cloudflare/vitest-pool-workers` runs the
+  suite *inside* workerd, which is why `request.cf` and the Analytics Engine binding are real
+  in tests. Rust has no equivalent; the loop would be compile → deploy → squint.
+
+Where Rust would genuinely earn its place is the archive side — rollups over Parquet/Iceberg,
+a local CLI chewing through gigabytes. That is compute-bound and runs outside Workers. v2.
+
+If validation ever did become the bottleneck, the cheaper fix is hand-written checks instead of
+zod, not a different language.
+
 What is actually needed is narrow: **ingest** many sources cheaply, **keep** the history, and
 **query** it with real SQL. Not funnels-and-replays — those can be bought later if the need
 ever becomes sharp.
@@ -76,9 +100,12 @@ it. That decision is deferred, not forbidden.
 - `make integration` — CLI replays a fixture file through the pipeline, no network needed.
 
 ### v2 — the archive
-- Pipelines stream + sink into R2 Iceberg via R2 Data Catalog. **Open fork:** the same job can
-  be done by a free Cron Trigger reading the SQL API into R2 as NDJSON/Parquet — no Workers
-  Paid, no Iceberg catalog, still readable by DuckDB and ClickHouse. Decide before building.
+- Pipelines stream + sink into R2 Iceberg via R2 Data Catalog. **Decided:** this is the archive,
+  not the cheaper workaround below. Workers Paid is already being paid for other reasons, so
+  the $5 is not a new cost, and a real Iceberg catalog is worth more than a folder of files.
+  <!-- AI-NOTE: fallback if the $5 ever stops being worth it — a free Cron Trigger reading the
+       SQL API into R2 as NDJSON/Parquet. No Workers Paid, no catalog, still read by DuckDB and
+       ClickHouse. Keep it in mind, do not build it while Pipelines is the plan. -->
 - Example ClickHouse and DuckDB queries against the Iceberg table.
 - Nightly rollups so common questions do not scan the whole archive.
 

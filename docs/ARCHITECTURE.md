@@ -41,10 +41,12 @@ So v1 — ingest, hot store, dashboard — costs **nothing**. The only thing tha
 Paid is **Pipelines**, which is v2. The $5 does not buy capacity, it buys permanence: without
 the archive, everything older than three months is gone.
 
-If the $5 is not wanted, the archive can also be built from a Cron Trigger (free) that reads
-the SQL API and writes NDJSON or Parquet into R2 (its own free tier, no Workers Paid). Not
-Iceberg, no catalog — but DuckDB and ClickHouse read it, so the criterion that matters,
-"deleting this project loses nothing", still holds. More code, less money.
+The account is on Workers Paid already, for reasons that predate this project, so v2 uses
+Pipelines and a real Iceberg catalog rather than the cheap route. Recorded for the day that
+stops being true: a Cron Trigger (free) can read the SQL API and write NDJSON or Parquet into
+R2 (its own free tier, no Workers Paid). Not Iceberg, no catalog, but DuckDB and ClickHouse
+read it, so "deleting this project loses nothing" still holds. More code, less money. Not
+being built while Pipelines is the plan.
 
 The Free plan's real constraint is **10 ms of CPU per invocation**. A full 250-event batch —
 JSON.parse of 77 KB, zod validation, enrichment and the blob mapping — measures p99 2.5 ms, so
