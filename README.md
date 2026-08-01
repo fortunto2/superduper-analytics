@@ -3,8 +3,10 @@
 One ingest endpoint for every site and app I run — on Cloudflare, with the history in Apache
 Iceberg so nobody can lock me out of it.
 
-> **Status: spec + skeleton.** The event contract and the source registry are real. The Worker
-> is a stub. Start at [docs/prd.md](docs/prd.md).
+> **Status: ingest accepts events, nothing stores them yet.** `POST /e` validates against the
+> contract, refuses any source not in the registry, and enriches at the edge — then drops the
+> result, because the storage sinks are the next step. There is also no authentication yet.
+> Start at [docs/prd.md](docs/prd.md).
 
 ## Why this exists
 

@@ -5,8 +5,12 @@ One ingest for every site and app I run, on Cloudflare, with the history in an o
 **Read [docs/prd.md](docs/prd.md) first — it is the brief, and it explains what was rejected
 and why.** Module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**State: spec + skeleton. There is no working code yet.** `src/schema.ts` and
-`registry/sources.yaml` are real; everything else is a stub waiting to be built.
+**State: step 1 of the build order is done.** `POST /e` validates, refuses unregistered
+sources and enriches at the edge; the CLI generates and checks the registry and replays
+fixtures offline. **No sinks yet** — accepted events are dropped on the floor, by design.
+Next is the Analytics Engine sink; open questions for it are at the end of
+[docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md). Ingest has **no authentication** — see
+ARCHITECTURE.md.
 
 ## Stack
 TypeScript · Cloudflare Workers · Hono · zod 4 (`import from "zod/v4"`) · pnpm · vitest +
@@ -16,16 +20,25 @@ Pipelines (cold). Requires wrangler ≥ 4.117 — earlier versions lack `pipelin
 
 ## Commands
 `make help` lists them. `make dev` · `make test` · `make deploy` · `make sync` (apply the
-registry) · `make integration` (replay fixtures through the pipeline, no network).
+registry) · `make integration` (replay fixtures through the pipeline, no network) ·
+`make gen` (regenerate from the registry and wrangler.jsonc) · `make check` (registry sound,
+generated code not stale). `make lint` and `make format` do not work — neither tool is
+installed.
 
 ## Structure
 ```
 src/schema.ts        the event contract — everything derives from it
-src/index.ts         Worker entry: routing, CORS, auth
+src/ingest.ts        validate → enrich. Pure: no I/O, no clock, no Cloudflare types
+src/registry.ts      is this source allowed — reads the generated list, never YAML
+src/index.ts         Worker entry: routing, CORS, auth. Thin by design
 registry/sources.yaml  every site and app; adding one is ONE COMMIT
-cli/                 replays fixtures; how `make integration` works without a network
+cli/                 gen · check · replay; how `make integration` works without a network
 docs/prd.md          the brief
 ```
+
+Generated, never edited by hand: `src/registry.generated.ts` (committed) and
+`worker-configuration.d.ts` (gitignored). Both come from `make gen`; `make check` fails if the
+first has drifted.
 
 ## The three things that will bite
 1. **Blob positions are a wire format.** `BLOB_SLOTS` maps fields to Analytics Engine's

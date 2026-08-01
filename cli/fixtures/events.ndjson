@@ -1,0 +1,22 @@
+# Newline-delimited events, replayed through the real ingest by `make integration`.
+# Every line here MUST be accepted — rejection cases live in test/ingest.test.ts, where the
+# reason can be asserted. The replay clock is fixed at 2026-06-15T12:00:00Z.
+#
+# Blank lines and lines starting with # are ignored.
+
+# Web: query string and full referrer go in, path and host come out.
+{"source":"superduperai","platform":"web","name":"page_viewed","path":"/pricing?utm_source=hn&token=leaked","referrer":"https://news.ycombinator.com/item?id=123","anon":"d41d8cd98f00b204"}
+{"source":"miralinka-marafon","platform":"web","name":"page_viewed","path":"/lp/spring#pricing","referrer":"https://www.instagram.com/"}
+{"source":"books","platform":"web","name":"signup_started","path":"/","ts":1781514000000}
+
+# The pair that this whole project exists for: one id, two platforms, comparable without a join.
+{"source":"live2play","platform":"web","name":"page_viewed","path":"/","referrer":"https://google.com/search?q=live2play"}
+{"source":"live2play","platform":"ios","name":"app_launched","version":"1.4.2","anon":"E621E1F8-C36C-495A-93FC","ts":1781514000000}
+
+# Mobile flush after two days offline — the client timestamp must survive.
+{"source":"photosweep","platform":"ios","name":"scan_completed","version":"2.0.0","ts":1781352000000,"metrics":{"duration_ms":8421,"photos_scanned":1204,"freed_mb":312.5}}
+{"source":"receiptbrain","platform":"ios","name":"purchase_completed","version":"1.1.0","props":{"tier":"pro","period":"annual","store":"appstore"},"metrics":{"price_usd":29.99}}
+
+# A source with no site, and a referrer that is not a URL at all.
+{"source":"jawharpsynth","platform":"ios","name":"preset_loaded","version":"1.0.3","props":{"preset":"kubyz-drone"}}
+{"source":"rustman","platform":"web","name":"page_viewed","path":"/about","referrer":"android-app://com.google.android.gm"}

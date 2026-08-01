@@ -106,3 +106,44 @@ export const BLOB_BUDGET = MAX_BLOBS - BLOB_SLOTS.length;
  * `source` is the right choice: nearly every question starts "for which site or app".
  */
 export const INDEX_FIELD = "source" as const;
+
+/**
+ * Coarse client kind, derived at ingest from the user agent — never sent by the client.
+ * Cloudflare's bot *score* lives in `request.cf.botManagement`, which is Enterprise-only, so
+ * this is a heuristic and is deliberately named as one.
+ */
+export const UaKind = z.enum(["browser", "app", "bot"]);
+
+export type BlobSlot = (typeof BLOB_SLOTS)[number];
+
+/**
+ * What comes OUT of ingest: the client's event, validated, stripped and stamped with what the
+ * edge knows. `country`, `referrer_host` and `ua_kind` exist only here — a client cannot send
+ * them. This is the shape the sinks write, so it is also the shape BLOB_SLOTS indexes into.
+ */
+export type EnrichedEvent = {
+  source: string;
+  platform: z.infer<typeof Platform>;
+  name: string;
+  path?: string;
+  referrer_host?: string;
+  country?: string;
+  version?: string;
+  anon?: string;
+  ua_kind: z.infer<typeof UaKind>;
+
+  /** Authoritative event time (ms). Never the raw client value — see enrich() in ingest.ts. */
+  ts: number;
+
+  props?: Record<string, string>;
+  metrics?: Record<string, number>;
+};
+
+/**
+ * Appending a slot to BLOB_SLOTS without giving EnrichedEvent a field of that name is now a
+ * compile error rather than a column of silent `undefined`. This is what makes the
+ * append-only rule above safe to actually follow.
+ */
+type SlotsCovered = Exclude<BlobSlot, keyof EnrichedEvent> extends never ? true : never;
+const _slotsCovered: SlotsCovered = true;
+void _slotsCovered;

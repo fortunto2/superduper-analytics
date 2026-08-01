@@ -41,6 +41,21 @@ boundary is worse than a chart that stops.
 4. **Never block the response.** Sink writes go through `ctx.waitUntil` — a beacon must not
    make a page wait.
 
+### The ingest is currently open to writes
+
+Say it plainly: source ids are public (the registry is in a public repo) and there is no
+authentication yet, so anyone who reads this repo can post events as any registered source.
+The blast radius is dirty counters, not a leak — no secrets are readable and nothing is
+destroyed — which is why it is acceptable while the pipeline is being built and not after.
+
+Two things close it, and neither exists yet:
+
+- **Web** — the origin allow-list generated from `sites[].url`, landing with the web snippet.
+- **Apps** — a per-app write key in `Authorization: Bearer`, derived and installed as a Worker
+  secret by `make sync`. Apps have no origin, so this is the only lever they have.
+
+Until both land, treat the numbers as indicative rather than evidential.
+
 ## The blob positions are a wire format
 
 `BLOB_SLOTS` in `schema.ts` maps fields onto Analytics Engine's `blob1..blob20`. Every query

@@ -10,10 +10,11 @@ allowed-tools: Read, Grep, Glob, Bash, Write, Edit
 
 # superduper-analytics — dev workflow
 
-**The project is a skeleton.** `src/schema.ts` and `registry/sources.yaml` are real; the
-Worker and CLI are stubs with the build order written in their headers. Read
+**Step 1 of the build order is done; step 2 is the sink.** `POST /e` validates, refuses
+unregistered sources and enriches at the edge — but nothing is stored yet. Read
 [docs/prd.md](../../../docs/prd.md) before writing code — it records what was rejected and why,
-which is the part that is expensive to rediscover.
+which is the part that is expensive to rediscover, and
+[docs/QUALITY_SCORE.md](../../../docs/QUALITY_SCORE.md) for what is thin right now.
 
 ## Stack
 TypeScript · Cloudflare Workers · Hono · zod 4 (`import { z } from "zod/v4"`) · pnpm ·
@@ -27,14 +28,18 @@ Pipelines needs the account on **Workers Paid**.
 make dev          # local Worker, :8787
 make test         # vitest
 make typecheck    # tsc --noEmit
+make gen          # regenerate from registry/sources.yaml and wrangler.jsonc
+make check        # registry sound, generated code not stale — cheap, offline
 make integration  # replay fixtures — must pass with NO network and NO credentials
-make sync         # apply registry/sources.yaml
+make sync         # apply registry/sources.yaml (not implemented)
 make deploy
 make tail         # production logs
 ```
 
+`make lint` and `make format` are declared but fail — neither eslint nor prettier is installed.
+
 ## Build order
-1. `POST /e` — validate with `Batch`, reject unknown `source`, return 204. No sinks.
+1. ~~`POST /e` — validate with `Batch`, reject unknown `source`, return 204. No sinks.~~ done
 2. Analytics Engine sink behind `ctx.waitUntil`, fields mapped by `BLOB_SLOTS`.
 3. `GET /v1/stats` over the SQL API — proves the round trip end to end.
 4. Web snippet (<2 KB, no cookies), then the Swift snippet.

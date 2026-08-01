@@ -126,5 +126,10 @@ and history, and an agent can edit a YAML file far more reliably than it can cli
 - Dashboard: a Worker-rendered page, or point Grafana at the SQL API? Start with the former.
 - Do mobile events go straight to the Worker, or buffer offline first? Probably buffer — a
   phone on stage has no signal.
-- Bot filtering: Analytics Engine has no built-in notion of it. Cloudflare's bot score is
-  available at the edge and should be stamped onto the event at ingest.
+- Bot filtering: Analytics Engine has no built-in notion of it. **The premise this question was
+  written on is wrong** — `request.cf.botManagement` is a Bot Management field and Bot
+  Management is Enterprise-only, so the score is not available on this account. Ingest
+  therefore stamps `ua_kind` (`browser` / `app` / `bot`) from a user-agent heuristic, which
+  catches declared crawlers and link-preview fetchers and nothing more. If bot traffic ever
+  distorts a number that matters, the honest options are a WAF rule in front of the Worker or
+  Turnstile — not a better regex.

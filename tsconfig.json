@@ -7,8 +7,8 @@
       "es2022"
     ],
     "types": [
-      "@cloudflare/workers-types",
-      "node"
+      "node",
+      "@cloudflare/vitest-pool-workers/types"
     ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -19,6 +19,7 @@
   "include": [
     "src/**/*.ts",
     "cli/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "worker-configuration.d.ts"
   ]
 }
