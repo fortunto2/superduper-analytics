@@ -28,6 +28,14 @@ describe("buildQuery", () => {
     expect(buildQuery("d", 30)).toContain("INTERVAL '30' DAY");
   });
 
+  it("orders and groups by the alias, never the raw column", () => {
+    // `ORDER BY blob1` after `blob1 AS source` is rejected by the live API with "unable to
+    // find type of column". Cost two failed queries to discover; cheap to keep discovered.
+    expect(sql).toContain("ORDER BY events");
+    expect(sql).toContain("GROUP BY source, platform");
+    expect(sql).not.toMatch(/(ORDER|GROUP) BY[^\n]*blob\d/);
+  });
+
   it.each([0, -1, 1.5, Number.NaN, RETENTION_DAYS + 1])(
     "refuses to build a query for days=%s rather than interpolating it",
     (days) => {

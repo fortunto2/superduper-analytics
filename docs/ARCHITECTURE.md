@@ -82,6 +82,38 @@ undercounts:
 This is why `INDEX_FIELD` is `source`: sampling happens per index value, so a busy site cannot
 thin out a quiet one's data.
 
+### The SQL dialect is ClickHouse-shaped, not ClickHouse
+
+Assume nothing about a function until it has answered. Two that cost real time:
+
+- **`ORDER BY` and `GROUP BY` must name the alias**, never the underlying column.
+  `SELECT blob1 AS source ... ORDER BY blob1` fails with *unable to find type of column*.
+- **`FORMAT JSONCompact` does not exist.** `FORMAT JSON` does.
+
+There are no JSON functions at all, which is what decides where `props` and `metrics` can
+usefully live.
+
+## Cloudflare's own zone analytics
+
+Ten zones cover all thirteen registered sites, and Cloudflare already counts their traffic at
+the edge for free: `httpRequests1dGroups` over the GraphQL API at
+`https://api.cloudflare.com/client/v4/graphql` gives requests, page views, uniques and threats
+per day. No ingestion, no storage, no snippet — it is already there.
+
+**It must never be summed with our events.** The edge counts HTTP requests, including bots,
+assets and API calls; we count what a snippet chose to report. One number added to the other
+means nothing, and a chart that mixes them is the failure this document keeps warning about.
+
+What it *is* good for is the ratio. Edge `pageViews` for a site against our `page_viewed`
+events for the same site is the only way to see that a snippet is missing or broken — the
+difference between "this landing page has no visitors" and "this landing page has no
+snippet". During the step-4 rollout that ratio is what says the work is finished.
+
+Two limits worth knowing before building on it: `httpRequests1dGroups` aggregates **per zone,
+not per host**, so every `*.superduperai.co` property collapses into one row — splitting them
+needs `httpRequestsAdaptiveGroups` with `clientRequestHTTPHost`, which is sampled. And history
+is shallower on the Free plan.
+
 ## Ingest path
 
 1. **Reject unknown sources.** `source` must be in `registry/sources.yaml`. This is the whole

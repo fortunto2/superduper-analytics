@@ -50,7 +50,12 @@ export function buildQuery(dataset: string, days: number): string {
     `FROM ${dataset}`,
     `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
     "GROUP BY source, platform",
+    // ORDER BY must name the ALIAS. `ORDER BY blob1` after `blob1 AS source` fails with
+    // "unable to find type of column" — the dialect resolves the select list first and forgets
+    // the raw name. Same for GROUP BY. Verified against the live API.
     "ORDER BY events DESC",
+    // JSONCompact does not exist here; JSON does. The dialect is ClickHouse-shaped, not
+    // ClickHouse — assume nothing about a function until it has answered.
     "FORMAT JSON",
   ].join("\n");
 }
