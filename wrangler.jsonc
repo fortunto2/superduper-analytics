@@ -5,6 +5,11 @@
   "compatibility_date": "2026-07-31",
   "observability": { "enabled": true },
 
+  // The deployment id, used as part of every Cache API key. Without it a deploy that changes a
+  // response shape serves the old shape until the TTL expires, and the page renders as if
+  // there were no data — which is exactly what happened once.
+  "version_metadata": { "binding": "VERSION" },
+
   // Declared here rather than left in the dashboard, so a deploy asserts it and the repo stays
   // the truth. This is the host every snippet points at and the one named in the privacy text
   // on every property, so it is effectively permanent — changing it later means editing every

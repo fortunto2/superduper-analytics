@@ -7,14 +7,21 @@
 # Write keys are derived at sync time and stored as Worker secrets.
 #
 # `id` is permanent: it is the partition key in the archive. Renaming one orphans history.
+#
+# `public: true` publishes a source's numbers on the open-startup page at /open. It is OPT-IN
+# and defaults to false — a source added tomorrow stays private until someone decides
+# otherwise, because the opposite mistake cannot be taken back.
 
 sites:
   - id: superduperai
     url: https://superduperai.co
+    public: true
   - id: live2play
     url: https://live2play.superduperai.co
+    public: true
   - id: life2film
     url: https://life2film.com
+    public: true
   - id: facealarm
     url: https://face-alarm.com
   - id: you2idea

@@ -10,9 +10,18 @@ import { parse } from "yaml";
 import { z } from "zod/v4";
 import { Platform, SourceId } from "../src/schema";
 
+/**
+ * `public` opts a source into the open-startup page at /open. It defaults to FALSE: a source
+ * added tomorrow stays private until someone deliberately publishes it. Opt-in, because the
+ * opposite mistake — a product's numbers going public because nobody remembered a flag — is
+ * not one you can take back.
+ */
+const Publishable = { public: z.boolean().default(false) };
+
 const Site = z.object({
   id: SourceId,
   url: z.url(),
+  ...Publishable,
 });
 
 const App = z.object({
@@ -23,6 +32,7 @@ const App = z.object({
   app_id: z.string().regex(/^\d+$/, "App Store Connect id is digits"),
   /** Optional cross-reference: the same product also has a site with this id. */
   site: SourceId.optional(),
+  ...Publishable,
 });
 
 export const RegistryFile = z.object({
@@ -84,9 +94,16 @@ export function checkRegistry(registry: RegistryFile): string[] {
 }
 
 /** Sites with their hostname, so the Worker can line a site up against its Cloudflare zone. */
-export function sitesOf(registry: RegistryFile): { id: string; host: string }[] {
+export function sitesOf(
+  registry: RegistryFile,
+): { id: string; host: string; url: string; open: boolean }[] {
   return registry.sites
-    .map((site) => ({ id: site.id, host: new URL(site.url).host }))
+    .map((site) => ({
+      id: site.id,
+      host: new URL(site.url).host,
+      url: site.url,
+      open: site.public,
+    }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -96,7 +113,11 @@ export function renderGenerated(registry: RegistryFile): string {
     .map((id) => `  ${JSON.stringify(id)},`)
     .join("\n");
   const sites = sitesOf(registry)
-    .map((s) => `  { id: ${JSON.stringify(s.id)}, host: ${JSON.stringify(s.host)} },`)
+    .map(
+      (s) =>
+        `  { id: ${JSON.stringify(s.id)}, host: ${JSON.stringify(s.host)}, ` +
+        `url: ${JSON.stringify(s.url)}, open: ${String(s.open)} },`,
+    )
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT.
 // Source of truth is registry/sources.yaml. Regenerate with \`make gen\`; \`make check\` fails

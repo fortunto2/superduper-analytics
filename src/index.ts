@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import { deriveAnon } from "./anon";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
+import { buildOpenReport, OPEN_CACHE_SECONDS, OPEN_PAGE, OPEN_PAGE_CACHE_SECONDS } from "./open";
 import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
@@ -39,6 +40,17 @@ const DEFAULT_WINDOW_DAYS = 7;
 
 /** Long enough to survive a refresh storm, short enough that "now" still means now. */
 const STATS_CACHE_SECONDS = 60;
+
+/**
+ * Cache keys carry the deployment id, so shipping new code invalidates every cached response
+ * instead of serving the previous shape until its TTL runs out. That failure is silent and
+ * looks like missing data, which is the worst way for a dashboard to be wrong.
+ */
+function cacheKey(c: { env: Bindings; req: { url: string } }): Request {
+  const url = new URL(c.req.url);
+  url.searchParams.set("__v", c.env.VERSION?.id ?? "dev");
+  return new Request(url.toString());
+}
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -70,6 +82,36 @@ app.use("/", async (c, next) => {
 app.use("/v1/*", async (c, next) => {
   if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
   await next();
+});
+
+/**
+ * The open-startup page. Public on purpose, and deliberately NOT under /v1/* — that prefix is
+ * keyed, and the two must not be one middleware edit away from swapping places.
+ *
+ * A 30-day window and a 15-minute cache: nobody refreshes a public metrics page for a live
+ * number, and read budget spent here is read budget not available to the dashboard.
+ */
+const OPEN_WINDOW_DAYS = 30;
+
+app.get("/open", (c) => {
+  c.header("content-type", "text/html; charset=utf-8");
+  c.header("cache-control", `public, max-age=${OPEN_PAGE_CACHE_SECONDS}`);
+  return c.body(OPEN_PAGE);
+});
+
+app.get("/open.json", async (c) => {
+  const cache = caches.default;
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
+  if (cached !== undefined) return cached;
+
+  const report = await buildOpenReport(c.env, OPEN_WINDOW_DAYS, Date.now());
+  const response = c.json(report);
+  response.headers.set("cache-control", `public, max-age=${OPEN_CACHE_SECONDS}`);
+  // Anyone may read it — that is the point — so anyone may fetch it from their own page too.
+  response.headers.set("access-control-allow-origin", "*");
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
 });
 
 /** The dashboard. Never indexed, never cached publicly — it is one operator's view. */
@@ -142,7 +184,8 @@ app.post("/e", async (c) => {
  */
 app.get("/v1/stats", async (c) => {
   const cache = caches.default;
-  const cached = await cache.match(c.req.raw);
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
   if (cached !== undefined) return cached;
 
   const result = await fetchStats(c.env, Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS));
@@ -150,7 +193,7 @@ app.get("/v1/stats", async (c) => {
 
   const response = c.json(result.stats);
   response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
-  c.executionCtx.waitUntil(cache.put(c.req.raw, response.clone()));
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
   return response;
 });
 
@@ -161,7 +204,8 @@ app.get("/v1/stats", async (c) => {
  */
 app.get("/v1/overview", async (c) => {
   const cache = caches.default;
-  const cached = await cache.match(c.req.raw);
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
   if (cached !== undefined) return cached;
 
   const result = await fetchOverview(
@@ -173,7 +217,7 @@ app.get("/v1/overview", async (c) => {
 
   const response = c.json(result.overview);
   response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
-  c.executionCtx.waitUntil(cache.put(c.req.raw, response.clone()));
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
   return response;
 });
 
