@@ -5,12 +5,12 @@ One ingest for every site and app I run, on Cloudflare, with the history in an o
 **Read [docs/prd.md](docs/prd.md) first — it is the brief, and it explains what was rejected
 and why.** Module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**State: step 1 of the build order is done.** `POST /e` validates, refuses unregistered
-sources and enriches at the edge; the CLI generates and checks the registry and replays
-fixtures offline. **No sinks yet** — accepted events are dropped on the floor, by design.
-Next is the Analytics Engine sink; open questions for it are at the end of
-[docs/QUALITY_SCORE.md](docs/QUALITY_SCORE.md). Ingest has **no authentication** — see
-ARCHITECTURE.md.
+**State: steps 1–2 of the build order are done.** `POST /e` validates, refuses unregistered
+sources, enriches at the edge and writes to Analytics Engine. Next is `GET /v1/stats` over the
+SQL API, which closes the round trip. Ingest has **no authentication** — see ARCHITECTURE.md.
+
+**v1 costs $0** — Analytics Engine and the ingest both run on the Workers Free plan. Workers
+Paid is needed only for Pipelines (v2), and that decision has an open fork; see PRD §4.
 
 ## Stack
 TypeScript · Cloudflare Workers · Hono · zod 4 (`import from "zod/v4"`) · pnpm · vitest +
@@ -30,6 +30,7 @@ installed.
 src/schema.ts        the event contract — everything derives from it
 src/ingest.ts        validate → enrich. Pure: no I/O, no clock, no Cloudflare types
 src/registry.ts      is this source allowed — reads the generated list, never YAML
+src/sinks/           where events land. Dumb by design: positions, nothing else
 src/index.ts         Worker entry: routing, CORS, auth. Thin by design
 registry/sources.yaml  every site and app; adding one is ONE COMMIT
 cli/                 gen · check · replay; how `make integration` works without a network
@@ -40,13 +41,17 @@ Generated, never edited by hand: `src/registry.generated.ts` (committed) and
 `worker-configuration.d.ts` (gitignored). Both come from `make gen`; `make check` fails if the
 first has drifted.
 
-## The three things that will bite
-1. **Blob positions are a wire format.** `BLOB_SLOTS` maps fields to Analytics Engine's
-   `blob1..blob20`, and every query refers to them by position. Append only — reordering
-   silently changes what historical data means.
-2. **Analytics Engine deletes after 3 months.** Anything historical must come from the Iceberg
-   archive. Never let a chart quietly fall back between the two.
-3. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or
+## The four things that will bite
+1. **Blob and double positions are a wire format.** `BLOB_SLOTS` and `DOUBLE_SLOTS` map fields
+   to `blob1..blob20` / `double1..double20`, and every query refers to them by position.
+   Append only — reordering silently changes what historical data means. A slot without a
+   matching `EnrichedEvent` field is a compile error, which is what keeps this enforceable.
+2. **Analytics Engine samples: `count()` is wrong.** Use `sum(_sample_interval)`, and the
+   weighted form of every other aggregate. The plain ones return a smaller number, not an
+   error. Table in ARCHITECTURE.md.
+3. **Analytics Engine deletes after 3 months.** Anything historical must come from the archive.
+   Never let a chart quietly fall back between the two.
+4. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or
    dashboard may create a source — otherwise the git file stops being the truth.
 
 ## Do / Don't

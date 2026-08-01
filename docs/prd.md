@@ -76,7 +76,9 @@ it. That decision is deferred, not forbidden.
 - `make integration` — CLI replays a fixture file through the pipeline, no network needed.
 
 ### v2 — the archive
-- Pipelines stream + sink into R2 Iceberg via R2 Data Catalog.
+- Pipelines stream + sink into R2 Iceberg via R2 Data Catalog. **Open fork:** the same job can
+  be done by a free Cron Trigger reading the SQL API into R2 as NDJSON/Parquet — no Workers
+  Paid, no Iceberg catalog, still readable by DuckDB and ClickHouse. Decide before building.
 - Example ClickHouse and DuckDB queries against the Iceberg table.
 - Nightly rollups so common questions do not scan the whole archive.
 
@@ -104,12 +106,17 @@ and history, and an agent can edit a YAML file far more reliably than it can cli
 
 ## 6. Constraints
 
-- **Analytics Engine:** 3-month retention, 20 blobs + 20 doubles per data point, 16 KB per
-  point, 250 points per Worker invocation.
+- **Analytics Engine:** 3-month retention, 20 blobs + 20 doubles per data point, 16 KB for all
+  blobs of a point together, 250 points per Worker invocation. Rows are **sampled** — `count()`
+  undercounts, use `sum(_sample_interval)`. See ARCHITECTURE.md.
 - **Pipelines and R2 Data Catalog are both in open/public beta.** Acceptable for analytics —
   no money moves through this — but do not build anything load-bearing on their stability yet.
-- **Workers Paid ($5/mo) is required** for Pipelines. Already on the account (verified: the
-  `wrangler pipelines` commands answer instead of refusing).
+- **Workers Paid ($5/mo) is required for Pipelines only.** Everything in v1 — the ingest, the
+  hot store and the dashboard — runs on the **Workers Free** plan: 100k data points and 10k
+  read queries a day, 100k Worker requests a day. The account is already on Paid (verified: the
+  `wrangler pipelines` commands answer instead of refusing), but v1 does not depend on it.
+- **10 ms of CPU per invocation on the Free plan.** A full 250-event batch measures p99 2.5 ms
+  end to end, so the headroom is about 4× — real, but spendable.
 - No cookies, no cross-site identifiers — this keeps the consent-banner question closed, and
   keeps the privacy claims on the properties honest.
 
@@ -118,7 +125,8 @@ and history, and an agent can edit a YAML file far more reliably than it can cli
 1. A new site is live in the dashboard within one commit and one deploy.
 2. An iOS app reports its first event with under 20 lines of Swift.
 3. "How many people visited every landing last week" answers in one query.
-4. Monthly cost stays under $10 all-in.
+4. Monthly cost stays under $10 all-in. (v1 is $0 — see §6. The $5 buys the archive, not
+   capacity.)
 5. Deleting this project loses nothing: the archive is Iceberg in R2 and readable elsewhere.
 
 ## 8. Open questions

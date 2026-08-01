@@ -30,6 +30,56 @@ Writes go to both. Neither is authoritative for the other's job, and the dashboa
 silently fall back from one to the other — a chart that changes meaning at the 3-month
 boundary is worse than a chart that stops.
 
+### What Analytics Engine costs, and what the $5 actually buys
+
+Analytics Engine runs on the **Workers Free** plan: 100,000 data points written and 10,000 read
+queries per day, against 13 sites and 12 apps. Paid raises that to 10M writes and 1M reads a
+month, then $0.25 per million writes and $1.00 per million reads. Cloudflare has not switched
+billing on yet at all.
+
+So v1 — ingest, hot store, dashboard — costs **nothing**. The only thing that needs Workers
+Paid is **Pipelines**, which is v2. The $5 does not buy capacity, it buys permanence: without
+the archive, everything older than three months is gone.
+
+If the $5 is not wanted, the archive can also be built from a Cron Trigger (free) that reads
+the SQL API and writes NDJSON or Parquet into R2 (its own free tier, no Workers Paid). Not
+Iceberg, no catalog — but DuckDB and ClickHouse read it, so the criterion that matters,
+"deleting this project loses nothing", still holds. More code, less money.
+
+The Free plan's real constraint is **10 ms of CPU per invocation**. A full 250-event batch —
+JSON.parse of 77 KB, zod validation, enrichment and the blob mapping — measures p99 2.5 ms, so
+there is about 4× headroom. Anything added to the hot path spends that budget.
+
+### Two decisions inside the hot sink
+
+**`props` and `metrics` are one JSON blob each, not one blob per key.** Free-form keys cannot
+have positions: two events of the same name may carry different keys, so "props fill blob12
+onwards in key order" makes blob12 mean one thing in one row and another in the next. The
+price is that the SQL API has string functions but **no JSON functions**, so those two columns
+cannot be aggregated in the hot store. That is the correct trade — the hot store answers "how
+many, from where, doing what", which lives entirely in the fixed slots. Numeric analysis of
+free-form measures is an archive question, and the archive is read by engines that parse JSON.
+
+**No `ctx.waitUntil` around the Analytics Engine write.** `writeDataPoint` returns `void` and
+is documented as non-blocking; the runtime flushes it after the response. There is no promise
+to wait on. `waitUntil` becomes necessary at the Pipelines sink, which really is async.
+
+### Analytics Engine samples, so `count()` is wrong
+
+Rows are sampled per index value, and each row carries `_sample_interval` — how many real
+events it stands for. Every aggregate has a weighted form and the plain one silently
+undercounts:
+
+| wrong | right |
+|---|---|
+| `count()` | `sum(_sample_interval)` |
+| `sum(x)` | `sum(x * _sample_interval)` |
+| `avg(x)` | `sum(x * _sample_interval) / sum(_sample_interval)` |
+| `quantile(0.5)(x)` | `quantileExactWeighted(0.5)(x, _sample_interval)` |
+
+This is why `INDEX_FIELD` is `source`: sampling happens per index value, so a busy site cannot
+thin out a quiet one's data.
+
 ## Ingest path
 
 1. **Reject unknown sources.** `source` must be in `registry/sources.yaml`. This is the whole

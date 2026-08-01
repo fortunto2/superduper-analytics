@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ingest, type EdgeContext } from "../src/ingest";
-import { BLOB_BUDGET, MAX_DOUBLES, MAX_EVENTS_PER_REQUEST } from "../src/schema";
+import { MAX_EVENTS_PER_REQUEST, MAX_FREEFORM_BYTES } from "../src/schema";
 
 const NOW = Date.parse("2026-06-15T12:00:00.000Z");
 const SAFARI =
@@ -110,28 +110,47 @@ describe("schema rejection", () => {
   });
 });
 
-describe("budgets the sink cannot exceed", () => {
+describe("free-form props and metrics", () => {
   const fill = (count: number, value: (i: number) => unknown) =>
-    Object.fromEntries(Array.from({ length: count }, (_, i) => [`k${i}`, value(i)]));
+    Object.fromEntries(Array.from({ length: count }, (_, i) => [`k${String(i).padStart(3, "0")}`, value(i)]));
 
-  it(`refuses more than ${BLOB_BUDGET} props`, () => {
-    const over = ingest({ events: [pageView({ props: fill(BLOB_BUDGET + 1, () => "x") })] }, edge());
-    if (over.ok) throw new Error("expected rejection");
-    expect(over.status).toBe(400);
-    expect(over.body).toMatchObject({ error: "too_many_props", limit: BLOB_BUDGET });
-
-    expect(ingest({ events: [pageView({ props: fill(BLOB_BUDGET, () => "x") })] }, edge()).ok).toBe(
-      true,
+  it("serializes props with keys sorted, so an identical set is an identical row", () => {
+    const events = accepted(
+      ingest({ events: [pageView({ props: { tier: "pro", currency: "eur", period: "year" } })] }, edge()),
     );
+    expect(events[0]?.props_json).toBe('{"currency":"eur","period":"year","tier":"pro"}');
   });
 
-  it(`refuses more than ${MAX_DOUBLES} metrics`, () => {
-    const over = ingest(
-      { events: [pageView({ metrics: fill(MAX_DOUBLES + 1, (i) => i) })] },
-      edge(),
+  it("serializes metrics the same way", () => {
+    const events = accepted(
+      ingest({ events: [pageView({ metrics: { price_usd: 29.99, seats: 3 } })] }, edge()),
     );
+    expect(events[0]?.metrics_json).toBe('{"price_usd":29.99,"seats":3}');
+  });
+
+  it("leaves an absent or empty object unset rather than storing an empty JSON blob", () => {
+    const events = accepted(
+      ingest({ events: [pageView(), pageView({ props: {}, metrics: {} })] }, edge()),
+    );
+    for (const event of events) {
+      expect(event.props_json).toBeUndefined();
+      expect(event.metrics_json).toBeUndefined();
+    }
+  });
+
+  it("refuses an event whose free-form data would overflow the 16 KB blob limit", () => {
+    // Each value is capped at 200 chars by the schema, so overflowing takes many keys.
+    const over = ingest({ events: [pageView({ props: fill(100, () => "x".repeat(200)) })] }, edge());
     if (over.ok) throw new Error("expected rejection");
-    expect(over.body).toMatchObject({ error: "too_many_metrics", limit: MAX_DOUBLES });
+    expect(over.status).toBe(400);
+    expect(over.body).toMatchObject({ error: "event_too_large", limit: MAX_FREEFORM_BYTES });
+    expect(Number(over.body.got)).toBeGreaterThan(MAX_FREEFORM_BYTES);
+  });
+
+  it("accepts free-form data that fits", () => {
+    expect(ingest({ events: [pageView({ props: fill(20, () => "x".repeat(200)) })] }, edge()).ok).toBe(
+      true,
+    );
   });
 });
 

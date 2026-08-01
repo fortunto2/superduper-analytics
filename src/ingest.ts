@@ -6,7 +6,7 @@
  * Sinks are not here — they are step 2 of the build order, and they consume `EnrichedEvent`.
  */
 import { isKnownSource } from "./registry";
-import { BLOB_BUDGET, Batch, MAX_DOUBLES, type EnrichedEvent, type Event } from "./schema";
+import { Batch, MAX_FREEFORM_BYTES, type EnrichedEvent, type Event } from "./schema";
 
 export type EdgeContext = {
   /** Server clock in ms. Injected rather than read, so replays are deterministic. */
@@ -76,7 +76,31 @@ export function stampTime(clientTs: number | undefined, now: number): number {
   return clientTs;
 }
 
-function enrich(event: Event, edge: EdgeContext): EnrichedEvent {
+const utf8 = new TextEncoder();
+
+const byteLength = (value: string | undefined): number =>
+  value === undefined ? 0 : utf8.encode(value).length;
+
+/**
+ * Keys sorted, so the same set of props always serializes to the same string — identical rows
+ * stay identical, which matters once the archive is being compacted and diffed. An empty
+ * object becomes `undefined`: a `{}` blob is noise in every query that touches it.
+ */
+export function canonicalJson(
+  record: Record<string, string | number> | undefined,
+): string | undefined {
+  if (record === undefined) return undefined;
+  const keys = Object.keys(record).sort();
+  if (keys.length === 0) return undefined;
+  return JSON.stringify(Object.fromEntries(keys.map((key) => [key, record[key]])));
+}
+
+function enrich(
+  event: Event,
+  edge: EdgeContext,
+  props_json: string | undefined,
+  metrics_json: string | undefined,
+): EnrichedEvent {
   return {
     source: event.source,
     platform: event.platform,
@@ -88,8 +112,8 @@ function enrich(event: Event, edge: EdgeContext): EnrichedEvent {
     anon: event.anon,
     ua_kind: uaKind(event.platform, edge.userAgent),
     ts: stampTime(event.ts, edge.now),
-    props: event.props,
-    metrics: event.metrics,
+    props_json,
+    metrics_json,
   };
 }
 
@@ -113,32 +137,36 @@ export function ingest(body: unknown, edge: EdgeContext): IngestResult {
     };
   }
 
+  const enriched: EnrichedEvent[] = [];
+
   for (const event of parsed.data.events) {
     // The registry is the whole access-control model. Nothing else may create a source.
     if (!isKnownSource(event.source)) {
       return { ok: false, status: 403, body: { error: "unknown_source", source: event.source } };
     }
 
-    // The schema declares these budgets; without a check here the sink would quietly drop
-    // whatever did not fit into blob10..blob20, and the loss would never surface.
-    const props = event.props === undefined ? 0 : Object.keys(event.props).length;
-    if (props > BLOB_BUDGET) {
+    const props_json = canonicalJson(event.props);
+    const metrics_json = canonicalJson(event.metrics);
+
+    // Analytics Engine caps all blobs in a data point at 16 KB and does not say which row it
+    // dropped when you exceed it. Checking here turns silent loss into a 400 the client can act
+    // on, which is the only place that trade is available.
+    const freeform = byteLength(props_json) + byteLength(metrics_json);
+    if (freeform > MAX_FREEFORM_BYTES) {
       return {
         ok: false,
         status: 400,
-        body: { error: "too_many_props", event: event.name, limit: BLOB_BUDGET, got: props },
+        body: {
+          error: "event_too_large",
+          event: event.name,
+          limit: MAX_FREEFORM_BYTES,
+          got: freeform,
+        },
       };
     }
 
-    const metrics = event.metrics === undefined ? 0 : Object.keys(event.metrics).length;
-    if (metrics > MAX_DOUBLES) {
-      return {
-        ok: false,
-        status: 400,
-        body: { error: "too_many_metrics", event: event.name, limit: MAX_DOUBLES, got: metrics },
-      };
-    }
+    enriched.push(enrich(event, edge, props_json, metrics_json));
   }
 
-  return { ok: true, events: parsed.data.events.map((event) => enrich(event, edge)) };
+  return { ok: true, events: enriched };
 }

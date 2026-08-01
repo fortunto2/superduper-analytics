@@ -3,7 +3,7 @@
  * 204 body, and the sendBeacon content-type path that the web snippet will depend on.
  */
 import { SELF, env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const INGEST = "https://analytics.example/e";
 
@@ -56,6 +56,28 @@ describe("POST /e", () => {
     expect(res.status).toBe(413);
   });
 
+  it("writes one data point per accepted event", async () => {
+    const spy = vi.spyOn(env.EVENTS, "writeDataPoint").mockImplementation(() => undefined);
+    try {
+      const res = await post(batch(pageView, { ...pageView, name: "signup_started" }));
+      expect(res.status).toBe(204);
+      expect(spy).toHaveBeenCalledTimes(2);
+      // The path reached the sink already stripped — ingest ran before the write, not after.
+      expect(spy.mock.calls[0]?.[0]?.blobs?.[3]).toBe("/pricing");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("writes nothing at all when the batch is refused", async () => {
+    const spy = vi.spyOn(env.EVENTS, "writeDataPoint").mockImplementation(() => undefined);
+    try {
+      await post(batch({ ...pageView, source: "not-registered" }, pageView));
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe("harness", () => {

@@ -81,8 +81,15 @@ function check(): void {
  */
 async function replay(): Promise<void> {
   const { ingest } = await import("../src/ingest");
+  const { toDataPoint } = await import("../src/sinks/analytics-engine");
+  const { BLOB_SLOTS, DOUBLE_SLOTS } = await import("../src/schema");
   const dir = flag("fixtures", DEFAULT_FIXTURES);
   if (!existsSync(dir)) fail(`no fixture directory at ${dir}`);
+
+  // The legend goes to stderr so stdout stays a clean stream of data points, diffable against
+  // a previous run when the mapping changes.
+  console.error(`blobs:   ${BLOB_SLOTS.map((s, i) => `${i + 1}:${s}`).join("  ")}`);
+  console.error(`doubles: ${DOUBLE_SLOTS.map((s, i) => `${i + 1}:${s}`).join("  ")}`);
 
   const files = readdirSync(dir)
     .filter((f) => f.endsWith(".ndjson"))
@@ -114,8 +121,9 @@ async function replay(): Promise<void> {
       if (!result.ok) {
         fail(`${path}: batch at line ${at + 1} rejected ${result.status} ${JSON.stringify(result.body)}`);
       }
-      // No sinks yet (build order step 2) — this is what would be written to them.
-      for (const event of result.events) console.log(JSON.stringify(event));
+      // Exactly what writeDataPoint would receive — positions included, which is the part
+      // worth proving offline, since a reordering is invisible until queries start lying.
+      for (const event of result.events) console.log(JSON.stringify(toDataPoint(event)));
       replayed += result.events.length;
     }
   }
