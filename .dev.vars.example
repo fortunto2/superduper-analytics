@@ -13,3 +13,8 @@
 
 CF_ACCOUNT_ID=0000000000000000000000000000000
 CF_API_TOKEN=placeholder-not-a-real-token
+
+# Salt for the per-day anonymous id. Any long random string; rotating it resets all anon ids,
+# which is a feature — it is the panic button if one ever needs to stop being derivable.
+#   openssl rand -hex 32
+ANON_SALT=replace-with-openssl-rand-hex-32

@@ -14,6 +14,8 @@ export type EdgeContext = {
   /** From `request.cf` or CF-IPCountry — never from the client. */
   country?: string;
   userAgent?: string;
+  /** Derived from IP + UA + the UTC date — see anon.ts. Authoritative for web. */
+  anon?: string;
 };
 
 export type IngestResult =
@@ -109,7 +111,10 @@ function enrich(
     referrer_host: referrerHost(event.referrer),
     country: edge.country,
     version: event.version,
-    anon: event.anon,
+    // A browser cannot choose its own identity: for web the edge-derived id wins outright,
+    // because anything else would let a page claim to be a thousand different people. Apps
+    // have no IP stability to derive from and send an install-scoped UUID instead.
+    anon: event.platform === "web" ? (edge.anon ?? event.anon) : (event.anon ?? edge.anon),
     ua_kind: uaKind(event.platform, edge.userAgent),
     ts: stampTime(event.ts, edge.now),
     props_json,
