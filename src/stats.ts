@@ -13,12 +13,20 @@ import { RETENTION_DAYS } from "./schema";
 export type SourceTotal = {
   source: string;
   platform: string;
+  /** Everything, humans and bots together. */
   events: number;
+  /** Classified `bot` by ua_kind. Reported, not hidden — see buildQuery. */
+  bot_events: number;
+  /** Page views from clients NOT classified as bots. This is the number worth reading. */
   page_views: number;
   /**
-   * DISTINCT over stored rows. Analytics Engine samples, and a sampled-away row takes its
-   * `anon` with it — no weighting brings back a value that was never written. So this is a
-   * LOWER BOUND, exact only while `max_sample` is 1. Real unique counts come from the edge.
+   * Distinct anonymous ids among non-bot rows. A LOWER BOUND: Analytics Engine samples, and a
+   * sampled-away row takes its `anon` with it, so no weighting recovers it. `max_sample` says
+   * when to distrust it.
+   *
+   * Still the better figure for "how many people" than Cloudflare's edge uniques, which do not
+   * lose rows to sampling but do count every scraper. A bot-filtered undercount beats an
+   * unfiltered overcount — measured on life2film, the edge said 20k and the truth was 2.
    */
   people_seen: number;
   /** 1 means nothing was dropped; above 1 means `people_seen` understates. */
@@ -32,7 +40,10 @@ export type Stats = {
   /** Always true, and stated in the payload so a consumer cannot forget what these are. */
   sampled: true;
   total_events: number;
+  total_bot_events: number;
+  /** Non-bot page views, and the distinct non-bot ids behind them. */
   total_page_views: number;
+  total_people: number;
   /** True when sampling actually dropped rows, i.e. when `people_seen` is understated. */
   sampling_active: boolean;
   sources: SourceTotal[];
@@ -62,10 +73,16 @@ export function buildQuery(dataset: string, days: number): string {
     "  blob2 AS platform,",
     // count() would undercount silently — Analytics Engine samples.
     "  sum(_sample_interval) AS events,",
-    "  sum(if(blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
+    // blob9 is ua_kind. Bots are counted, never silently dropped — a source that is 90% bot
+    // is a fact about that source, and hiding it is how a number quietly becomes wrong.
+    "  sum(if(blob9 = 'bot', _sample_interval, 0)) AS bot_events,",
+    "  sum(if(blob9 != 'bot' AND blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
     // `uniq()` does not exist in this dialect; `count(DISTINCT …)` does. It is a lower bound
     // under sampling, which is why max_sample rides along to say when to distrust it.
-    "  count(DISTINCT blob8) AS people_seen,",
+    //
+    // `if(…, blob8, null)` is rejected — both branches must share a type — so bot rows collapse
+    // onto the empty string and contribute exactly one spurious distinct value, removed below.
+    "  count(DISTINCT if(blob9 != 'bot', blob8, '')) AS people_raw,",
     "  max(_sample_interval) AS max_sample",
     `FROM ${dataset}`,
     `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
@@ -84,14 +101,20 @@ export function buildQuery(dataset: string, days: number): string {
 export function parseRows(payload: unknown): SourceTotal[] {
   const rows = (payload as SqlResponse | null)?.data;
   if (!Array.isArray(rows)) return [];
-  return rows.map((row) => ({
-    source: String(row.source ?? ""),
-    platform: String(row.platform ?? ""),
-    events: Number(row.events ?? 0),
-    page_views: Number(row.page_views ?? 0),
-    people_seen: Number(row.people_seen ?? 0),
-    max_sample: Number(row.max_sample ?? 1),
-  }));
+  return rows.map((row) => {
+    const bot_events = Number(row.bot_events ?? 0);
+    // Remove the empty-string bucket every bot row collapsed onto — see buildQuery.
+    const people_raw = Number(row.people_raw ?? 0);
+    return {
+      source: String(row.source ?? ""),
+      platform: String(row.platform ?? ""),
+      events: Number(row.events ?? 0),
+      bot_events,
+      page_views: Number(row.page_views ?? 0),
+      people_seen: Math.max(0, people_raw - (bot_events > 0 ? 1 : 0)),
+      max_sample: Number(row.max_sample ?? 1),
+    };
+  });
 }
 
 /** Events per day, for the trend line. Same weighting rule as everything else. */
@@ -184,7 +207,11 @@ export async function fetchStats(
       window_days: days,
       sampled: true,
       total_events: sources.reduce((sum, row) => sum + row.events, 0),
+      total_bot_events: sources.reduce((sum, row) => sum + row.bot_events, 0),
       total_page_views: sources.reduce((sum, row) => sum + row.page_views, 0),
+      // Summed across sources rather than counted globally: the same person on two sites is
+      // two ids anyway, since `anon` is derived per day and never joined across properties.
+      total_people: sources.reduce((sum, row) => sum + row.people_seen, 0),
       sampling_active: sources.some((row) => row.max_sample > 1),
       sources,
       // The trend is decoration next to the totals: if it fails, show the numbers anyway.

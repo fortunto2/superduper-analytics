@@ -98,10 +98,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
   </header>
   <div id="app"><p class="empty">Loading…</p></div>
   <footer>
-    Events are ours, counted weighted by <code>_sample_interval</code>. People and edge page
-    views come from Cloudflare's own zone analytics, which counts before sampling.
-    The two are never added together — the edge counts every HTTP request including bots and
-    assets, we count what a counter chose to report.
+    Everything on the left is ours, counted weighted by <code>_sample_interval</code>, with
+    anything classified <code>bot</code> excluded from people and page views and shown in its
+    own column instead. Edge figures come from Cloudflare's zone analytics: they lose nothing to
+    sampling but count every scraper, so they are an upper bound and are never added to ours.
     <br>Analytics Engine keeps 90 days. Anything older is an archive question.
   </footer>
 </div>
@@ -152,15 +152,22 @@ function render(o){
 
   var h='';
   if(st.sampling_active) h+='<div class="note"><strong>Sampling is active.</strong> Event counts are '+
-    'weighted and exact; our own “people seen” is a lower bound, because a dropped row takes its '+
-    'anonymous id with it. Use the edge figure for people.</div>';
+    'weighted and exact. “People” is a lower bound: a dropped row takes its anonymous id with '+
+    'it, and no weighting brings back a value that was never written.</div>';
 
+  // People come from OUR data, bot-filtered, not from the edge. The edge loses nothing to
+  // sampling but counts every scraper: on life2film it reported 20k uniques where two people
+  // had actually visited. A filtered undercount beats an unfiltered overcount.
+  var botShare=st.total_events?Math.round(st.total_bot_events/st.total_events*100):0;
   h+='<div class="tiles">'+
-    tile('Events',fmt(st.total_events),null,true)+
-    tile('Page views (ours)',fmt(st.total_page_views))+
-    tile('People (edge)',o.edge_available?fmt(edge):'—',o.edge_available?'counted before sampling':'edge unavailable')+
+    tile('People',fmt(st.total_people),'ours, bots excluded',true)+
+    tile('Page views',fmt(st.total_page_views),'bots excluded')+
+    tile('Bot events',fmt(st.total_bot_events),botShare+'% of everything received')+
     tile('Counters live',o.sites_reporting+' / '+o.sites_total,'registered sites')+
   '</div>';
+  if(o.edge_available) h+='<p class="sub" style="margin:-8px 0 20px">Cloudflare\\u2019s edge saw '+
+    fmt(edge)+' unique clients over the same window \\u2014 that figure loses nothing to sampling '+
+    'but counts scrapers too, so it is an upper bound, not a second opinion.</p>';
 
   h+='<div class="card"><h2>Events per day</h2>'+line(st.daily)+'</div>';
 
@@ -185,12 +192,14 @@ function render(o){
   h+='<div class="card"><h2>Sources</h2>';
   if(!st.sources.length) h+='<p class="empty">No events in this window.</p>';
   else{
-    h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">Events</th>'+
-       '<th class="n">Page views</th><th class="n">People seen</th></tr></thead><tbody>';
+    h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People</th>'+
+       '<th class="n">Page views</th><th class="n">Bot events</th></tr></thead><tbody>';
     st.sources.forEach(function(r){
+      var mostly=r.events>0&&r.bot_events/r.events>0.5;
       h+='<tr><td class="name">'+esc(r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
-        '<td class="n">'+fmt(r.events)+'</td><td class="n">'+fmt(r.page_views)+'</td>'+
-        '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td></tr>'});
+        '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td>'+
+        '<td class="n">'+fmt(r.page_views)+'</td>'+
+        '<td class="n"'+(mostly?' style="color:var(--warn)"':'')+'>'+fmt(r.bot_events)+'</td></tr>'});
     h+='</tbody></table>';
     if(st.sources.some(function(r){return r.max_sample>1}))
       h+='<p class="sub" style="margin:10px 0 0">“+” marks a lower bound: sampling dropped rows in that group.</p>';

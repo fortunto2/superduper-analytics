@@ -108,6 +108,12 @@ What it *is* good for is a **binary** question: is a counter installed and repor
 That is the difference between "this landing page has no visitors" and "this landing page has
 no snippet", and it is the only thing that says the rollout is finished.
 
+**And people come from OUR data, not the edge.** The earlier reasoning — that sampling destroys
+DISTINCT so uniques must come from Cloudflare — was only half the story. The edge loses nothing
+to sampling but counts every scraper: on life2film it reported 20,000 unique clients for a
+window in which exactly two people visited. A bot-filtered undercount beats an unfiltered
+overcount, so `ua_kind` is the filter and the resulting number is labelled a lower bound.
+
 **Not a ratio.** Measured on life2film.com over 24 hours: of 8,307 requests, 55% came from an
 unidentified user agent and 30% from `curl`, against roughly 12% from real browsers. A counter
 that only runs in browsers can never approach the edge figure, so a percentage reads as failure

@@ -50,9 +50,9 @@ describe("buildQuery", () => {
 
 describe("parseRows", () => {
   it("coerces the string aggregates the SQL API returns", () => {
-    const row = { source: "books", platform: "web", events: "42", page_views: "40" };
+    const row = { source: "books", platform: "web", events: "42", page_views: "40", people_raw: "9" };
     expect(parseRows({ data: [row] })).toEqual([
-      { source: "books", platform: "web", events: 42, page_views: 40, people_seen: 0, max_sample: 1 },
+      { source: "books", platform: "web", events: 42, bot_events: 0, page_views: 40, people_seen: 9, max_sample: 1 },
     ]);
   });
 
@@ -104,8 +104,8 @@ describe("fetchStats against a stubbed SQL API", () => {
       async () =>
         Response.json({
           data: [
-            { source: "superduperai", platform: "web", events: "100", page_views: "90", people_seen: "7", max_sample: "15" },
-            { source: "live2play", platform: "ios", events: "23", page_views: "0", people_seen: "3", max_sample: "1" },
+            { source: "superduperai", platform: "web", events: "100", bot_events: "40", page_views: "90", people_raw: "8", max_sample: "15" },
+            { source: "live2play", platform: "ios", events: "23", page_views: "0", people_raw: "3", max_sample: "1" },
           ],
         }),
       () => fetchStats(env, 7),
@@ -150,5 +150,27 @@ describe("fetchStats against a stubbed SQL API", () => {
       () => fetchStats(env, 7),
     );
     expect(result).toMatchObject({ ok: false, status: 502, body: { error: "sql_api_failed" } });
+  });
+});
+
+describe("bots are separated, not hidden", () => {
+  it("drops the empty-string bucket bot rows collapse onto", () => {
+    // The SQL maps every bot row to '' because if(cond, x, null) is rejected by the dialect,
+    // so one spurious distinct value has to come back off.
+    const withBots = parseRows({ data: [{ people_raw: "8", bot_events: "40" }] })[0];
+    const without = parseRows({ data: [{ people_raw: "8", bot_events: "0" }] })[0];
+    expect(withBots?.people_seen).toBe(7);
+    expect(without?.people_seen).toBe(8);
+  });
+
+  it("never reports negative people, however odd the row", () => {
+    expect(parseRows({ data: [{ people_raw: "0", bot_events: "5" }] })[0]?.people_seen).toBe(0);
+  });
+
+  it("reports bot volume rather than discarding it", () => {
+    // life2film's real shape on day two: 88 bot events against 10 human ones.
+    const row = parseRows({ data: [{ events: "98", bot_events: "88", people_raw: "3" }] })[0];
+    expect(row?.bot_events).toBe(88);
+    expect(row?.people_seen).toBe(2);
   });
 });
