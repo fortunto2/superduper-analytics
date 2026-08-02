@@ -104,10 +104,16 @@ per day. No ingestion, no storage, no snippet — it is already there.
 assets and API calls; we count what a snippet chose to report. One number added to the other
 means nothing, and a chart that mixes them is the failure this document keeps warning about.
 
-What it *is* good for is the ratio. Edge `pageViews` for a site against our `page_viewed`
-events for the same site is the only way to see that a snippet is missing or broken — the
-difference between "this landing page has no visitors" and "this landing page has no
-snippet". During the step-4 rollout that ratio is what says the work is finished.
+What it *is* good for is a **binary** question: is a counter installed and reporting at all?
+That is the difference between "this landing page has no visitors" and "this landing page has
+no snippet", and it is the only thing that says the rollout is finished.
+
+**Not a ratio.** Measured on life2film.com over 24 hours: of 8,307 requests, 55% came from an
+unidentified user agent and 30% from `curl`, against roughly 12% from real browsers. A counter
+that only runs in browsers can never approach the edge figure, so a percentage reads as failure
+when the counter is healthy — the first version of the dashboard showed "0.7% covered" for a
+site that was working perfectly. The two columns are different populations; showing them side
+by side is honest, dividing one by the other is not.
 
 Two limits worth knowing before building on it: `httpRequests1dGroups` aggregates **per zone,
 not per host**, so every `*.superduperai.co` property collapses into one row — splitting them

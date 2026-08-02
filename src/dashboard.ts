@@ -115,10 +115,16 @@ var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'
 function tile(k,v,s,hero){return '<div class="tile'+(hero?' hero':'')+'"><div class="k">'+esc(k)+'</div>'+
   '<div class="v">'+esc(v)+'</div>'+(s?'<div class="s">'+esc(s)+'</div>':'')+'</div>'}
 
-function status(ratio){
-  if(ratio===null) return {c:'var(--muted)',t:'no edge data'};
-  if(ratio===0) return {c:'var(--crit)',t:'no counter'};
-  if(ratio<0.2) return {c:'var(--warn)',t:'partial'};
+/**
+ * Deliberately BINARY, not a percentage. Measured on life2film.com: 86% of what the edge
+ * counts is curl and unidentified scrapers, and only ~12% is a real browser. A counter that
+ * runs only in browsers can therefore never approach 100% of the edge figure, so a ratio
+ * reads as failure when the counter is perfectly healthy. The question this panel exists to
+ * answer is "is it reporting at all", and that question has three answers.
+ */
+function status(ours,edge){
+  if(edge===0) return {c:'var(--muted)',t:'no edge data'};
+  if(ours===0) return {c:'var(--crit)',t:'no counter'};
   return {c:'var(--good)',t:'reporting'};
 }
 
@@ -162,14 +168,17 @@ function render(o){
   if(!o.edge_available) h+='<p class="empty">Cloudflare edge analytics unavailable — coverage cannot be judged.</p>';
   else if(!o.coverage.length) h+='<p class="empty">No registered site sits in a Cloudflare zone.</p>';
   else{
-    h+='<table><thead><tr><th>Zone</th><th class="n">Edge views</th><th class="n">Ours</th>'+
-       '<th class="n">Covered</th><th>State</th></tr></thead><tbody>';
-    o.coverage.forEach(function(c){var s=status(c.ratio);
+    h+='<table><thead><tr><th>Zone</th><th class="n">Edge, all traffic</th>'+
+       '<th class="n">Ours, browsers</th><th>State</th></tr></thead><tbody>';
+    o.coverage.forEach(function(c){var s=status(c.our_page_views,c.edge_page_views);
       h+='<tr><td><div class="name">'+esc(c.zone)+'</div><div class="sub">'+esc(c.sites.join(', '))+'</div></td>'+
         '<td class="n">'+fmt(c.edge_page_views)+'</td><td class="n">'+fmt(c.our_page_views)+'</td>'+
-        '<td class="n">'+(c.ratio===null?'—':Math.round(c.ratio*100)+'%')+'</td>'+
         '<td><span class="pill"><span class="dot" style="background:'+s.c+'"></span>'+esc(s.t)+'</span></td></tr>'});
-    h+='</tbody></table>';
+    h+='</tbody></table>'+
+      '<p class="sub" style="margin:12px 0 0">The two columns are different populations and '+
+      'their ratio means nothing: on life2film.com 86% of what the edge counts is curl and '+
+      'unidentified scrapers, against ~12% real browsers. Read this as installed or not '+
+      'installed, and read the trend from our own column alone.</p>';
   }
   h+='</div>';
 
