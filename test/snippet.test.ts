@@ -301,3 +301,30 @@ describe("clicks marked up in HTML", () => {
     expect(() => r.click(null)).not.toThrow();
   });
 });
+
+describe("how a stale browser gets the new snippet", () => {
+  it("revalidates with a 304 and no body when the version has not moved", async () => {
+    const first = await SELF.fetch("https://analytics.example/sda.js");
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+
+    const again = await SELF.fetch("https://analytics.example/sda.js", {
+      headers: { "if-none-match": etag! },
+    });
+    expect(again.status).toBe(304);
+    expect(await again.text()).toBe("");
+  });
+
+  it("serves the new body once the version moves — the ETag is the version, not a hash of chance", async () => {
+    const res = await SELF.fetch("https://analytics.example/sda.js", {
+      headers: { "if-none-match": '"sda-0"' },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(SNIPPET);
+  });
+
+  it("lets a returning visitor run the cached copy while fetching the fix behind their back", async () => {
+    const res = await SELF.fetch("https://analytics.example/sda.js");
+    expect(res.headers.get("cache-control")).toContain("stale-while-revalidate=");
+  });
+});

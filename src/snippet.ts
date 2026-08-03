@@ -60,7 +60,8 @@
  * that execute the snippet caught it; nothing else would have.
  */
 
-/** Bumped when the served snippet changes; it is the cache key visitors actually see. */
+/** Bumped when the served snippet changes. It is the ETag, so a stale browser revalidates
+ * with a 304 instead of downloading the string again — see the /sda.js route. */
 export const SNIPPET_VERSION = "2";
 
 /** An hour: long enough to be free in practice, short enough that a fix lands the same day. */
