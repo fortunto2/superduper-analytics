@@ -52,6 +52,7 @@ cli/                 gen · check · replay; how `make integration` works withou
 docs/prd.md          the brief
 docs/tz-funnel-and-mobile.md  how site→install→purchase is attributed without an identifier
 db/schema.sql        the store-report tables. `make db` applies it
+docs/metrics.md      what the dashboard must show, and where each number comes from
 ```
 
 Generated, never edited by hand: `src/registry.generated.ts` (committed) and
