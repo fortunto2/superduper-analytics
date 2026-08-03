@@ -9,7 +9,8 @@
  *   <script defer src="https://analytics.superduperai.co/sda.js" data-source="superduperai"></script>
  *
  * Optional attributes: `data-endpoint` to point elsewhere, `data-version` to stamp a release.
- * Custom events: `sda("signup_started", {plan: "pro"}, {seats: 3})`.
+ * Custom events: `sda("signup_started", {plan: "pro"}, {seats: 3})`, or in the markup alone:
+ *   <a href="…" data-sda-event="app_store_opened" data-sda-placement="hero">
  *
  * ── Why it is written the way it is ────────────────────────────────────────────────────────
  *
@@ -37,6 +38,14 @@
  * folds into an existing one and `page_engaged` is just an event name, and event names were
  * left open for exactly this.
  *
+ * CLICKS ARE MARKUP, NOT CODE. A `data-sda-event` attribute anywhere on the page is reported
+ * on click, with `data-sda-placement` as a prop. Thirteen sites would otherwise each grow
+ * their own copy of the same four-line listener, and the outbound click — the store button,
+ * the signup — is the one event a landing page exists to produce. The listener captures, so a
+ * handler that calls stopPropagation cannot hide a click from us, and it walks up from the
+ * target, because the click always lands on the icon inside the button and never on the
+ * button. It costs ~150 bytes raw and ~60 served; see the budget in the tests.
+ *
  * IT DOES NOT TRUST `document.currentScript`. Host frameworks inject scripts their own way —
  * `next/script` builds the element in JavaScript — and a snippet that reads its configuration
  * from `currentScript` alone silently does nothing when it guesses wrong. The fallback finds
@@ -52,7 +61,7 @@
  */
 
 /** Bumped when the served snippet changes; it is the cache key visitors actually see. */
-export const SNIPPET_VERSION = "1";
+export const SNIPPET_VERSION = "2";
 
 /** An hour: long enough to be free in practice, short enough that a fix lands the same day. */
 export const SNIPPET_CACHE_SECONDS = 3600;
@@ -77,7 +86,7 @@ if(!buf.length)return;
 var body=JSON.stringify({events:buf});buf=[];clearTimeout(timer);timer=null;
 try{
 var blob=new Blob([body],{type:"text/plain"});
-if(!(navigator.sendBeacon&&navigator.sendBeacon(api,blob)))throw 0
+if(!(nav.sendBeacon&&nav.sendBeacon(api,blob)))throw 0
 }catch(e){
 try{fetch(api,{method:"POST",body:body,keepalive:true,mode:"no-cors"})}catch(e2){}
 }
@@ -91,7 +100,11 @@ function engage(){if(engaged)return;engaged=1;push("page_engaged")}
 ["scroll","pointerdown","keydown"].forEach(function(e){
 w.addEventListener(e,engage,{passive:true})
 });
-d.addEventListener("visibilitychange",function(){if(d.visibilityState==="hidden")flush()});
+d.addEventListener("click",function(e){
+var t=e.target,c=t&&t.closest&&t.closest("[data-sda-event]"),a=c&&c.dataset;
+if(a)push(a.sdaEvent,{placement:a.sdaPlacement||"unknown"})
+},true);
+d.addEventListener("visibilitychange",function(){if(d.hidden)flush()});
 w.addEventListener("pagehide",flush);
 var seen=path();
 function route(){var p=path();if(p!==seen){seen=p;engaged=0;push("page_viewed")}}
@@ -101,7 +114,7 @@ history[m]=function(){var r=orig.apply(this,arguments);route();return r}
 });
 w.addEventListener("popstate",route);
 w.sda=push;
-if(queued)Array.prototype.forEach.call(queued,function(a){push.apply(null,a)});
+if(queued)[].forEach.call(queued,function(a){push.apply(null,a)});
 push("page_viewed")
 })(window,document);
 `;

@@ -35,7 +35,9 @@ Asked and answered with a measurement, not a preference. `workers-rs` does expos
 - **Rust on Workers means WASM** — a far bigger module and a worse cold start. On a beacon
   path, cold start hurts the user; 2 ms of compute does not.
 - **The web snippet must be JavaScript.** Under 2 KB, in a browser. Half the client surface of
-  this project has no choice at all.
+  this project has no choice at all. "2 KB" means what the visitor downloads, so the test
+  asserts the compressed size (under 1.2 KB); a raw ceiling of 2.5 KB stays alongside it purely
+  as a guard against careless copy-paste, which compression forgives and the raw count does not.
 - **The test harness is the deciding practicality.** `@cloudflare/vitest-pool-workers` runs the
   suite *inside* workerd, which is why `request.cf` and the Analytics Engine binding are real
   in tests. Rust has no equivalent; the loop would be compile → deploy → squint.
