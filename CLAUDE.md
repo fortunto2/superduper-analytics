@@ -44,6 +44,7 @@ src/stats.ts         reads the hot store over the SQL API. Never writes
 src/zones.ts         Cloudflare's own edge analytics. Where "how many people" comes from
 src/overview.ts      assembles both for the dashboard — never sums them
 src/dashboard.ts     the page at /. One self-contained string, no framework
+src/mcp.ts           the analytics as tools an agent can call, at POST /mcp
 src/index.ts         Worker entry: routing, CORS, auth. Thin by design
 registry/sources.yaml  every site and app; adding one is ONE COMMIT
 cli/                 gen · check · replay; how `make integration` works without a network

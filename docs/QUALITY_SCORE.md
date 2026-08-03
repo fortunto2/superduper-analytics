@@ -15,6 +15,7 @@ Scale: A solid · B works, rough edges · C stub · D absent.
 | Pipelines → Iceberg | D | v2 — Pipelines, decided; see PRD §4 |
 | Stats read path | B | `/v1/stats` and `/v1/overview` deployed, guarded and **proven end to end** |
 | Unique visitors | C | Not answerable from our events — sampling destroys DISTINCT. Comes from Cloudflare zone analytics instead |
+| MCP server | B | `POST /mcp`, four tools, bearer-auth on DASHBOARD_KEY. Stateless Streamable HTTP; verified against production |
 | Dashboard | B | Live at `/`, behind `DASHBOARD_KEY`. Coverage panel, trend, both tables; validated palette, both themes |
 | Web counter | B | `/sda.js`, 1519 B, proven in a real browser. **Installed on zero sites** |
 | Swift snippet | D | Not started |

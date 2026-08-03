@@ -14,6 +14,7 @@ import { deriveAnon } from "./anon";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
 import { buildOpenReport, OPEN_CACHE_SECONDS, OPEN_PAGE, OPEN_PAGE_CACHE_SECONDS } from "./open";
+import { handleMcp } from "./mcp";
 import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
@@ -78,6 +79,13 @@ app.use("/", async (c, next) => {
   if (!authorized(c)) return c.text("not found", 404);
   await next();
 });
+
+/**
+ * The analytics as tools an agent can call. Outside the /v1/* middleware because MCP carries
+ * its own auth convention — a bearer token and a 401 with WWW-Authenticate — which is what an
+ * MCP client knows how to handle. Same DASHBOARD_KEY behind it.
+ */
+app.all("/mcp", (c) => handleMcp(c.req.raw, c.env, Date.now()));
 
 app.use("/v1/*", async (c, next) => {
   if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
