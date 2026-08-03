@@ -28,6 +28,9 @@ const full: EnrichedEvent = {
   ts: 1781524800000,
   props_json: '{"tier":"pro"}',
   metrics_json: '{"price_usd":29.99}',
+  utm_source: "youtube",
+  utm_medium: "shorts",
+  utm_campaign: "nest-01",
 };
 
 describe("positions", () => {
@@ -46,6 +49,9 @@ describe("positions", () => {
       "browser", // blob9  ua_kind
       '{"tier":"pro"}', // blob10 props_json
       '{"price_usd":29.99}', // blob11 metrics_json
+      "youtube", // blob12 utm_source
+      "shorts", // blob13 utm_medium
+      "nest-01", // blob14 utm_campaign
     ]);
   });
 

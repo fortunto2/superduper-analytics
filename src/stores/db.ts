@@ -19,9 +19,9 @@ export async function writeRows(db: D1Database, rows: StoreRow[], now: number): 
   if (rows.length === 0) return 0;
 
   const statement = db.prepare(
-    `INSERT INTO store_daily (day, source, store, metric, campaign, country, value, fetched)
+    `INSERT INTO store_daily (day, source, provider, metric, campaign, country, value, fetched)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (day, source, store, metric, campaign, country)
+     ON CONFLICT (day, source, provider, metric, campaign, country)
      DO UPDATE SET value = excluded.value, fetched = excluded.fetched`,
   );
 
@@ -29,7 +29,7 @@ export async function writeRows(db: D1Database, rows: StoreRow[], now: number): 
   // never half-written and looking complete.
   await db.batch(
     rows.map((r) =>
-      statement.bind(r.day, r.source, r.store, r.metric, r.campaign, r.country, r.value, now),
+      statement.bind(r.day, r.source, r.provider, r.metric, r.campaign, r.country, r.value, now),
     ),
   );
   return rows.length;
@@ -38,36 +38,36 @@ export async function writeRows(db: D1Database, rows: StoreRow[], now: number): 
 /** Where the last run got to, so the next one starts from fact rather than from the clock. */
 export async function readSync(
   db: D1Database,
-  store: string,
+  provider: string,
 ): Promise<Map<string, string>> {
   const { results } = await db
-    .prepare(`SELECT source, through FROM store_sync WHERE store = ?`)
-    .bind(store)
+    .prepare(`SELECT source, through FROM store_sync WHERE provider = ?`)
+    .bind(provider)
     .all<{ source: string; through: string }>();
   return new Map(results.map((r) => [r.source, r.through]));
 }
 
 export async function writeSync(
   db: D1Database,
-  store: string,
+  provider: string,
   through: Map<string, string>,
   now: number,
   note = "",
 ): Promise<void> {
   if (through.size === 0) return;
   const statement = db.prepare(
-    `INSERT INTO store_sync (store, source, through, ran, note) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (store, source)
+    `INSERT INTO store_sync (provider, source, through, ran, note) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (provider, source)
      DO UPDATE SET through = excluded.through, ran = excluded.ran, note = excluded.note`,
   );
   await db.batch(
-    [...through].map(([source, day]) => statement.bind(store, source, day, now, note)),
+    [...through].map(([source, day]) => statement.bind(provider, source, day, now, note)),
   );
 }
 
 export type StoreTotal = {
   source: string;
-  store: string;
+  provider: string;
   metric: string;
   value: number;
 };
@@ -86,11 +86,11 @@ export async function readTotals(
 ): Promise<StoreTotal[]> {
   const { results } = await db
     .prepare(
-      `SELECT source, store, metric, SUM(value) AS value
+      `SELECT source, provider, metric, SUM(value) AS value
          FROM store_daily
         WHERE day >= ? AND day <= ?
-     GROUP BY source, store, metric
-     ORDER BY source, store, metric`,
+     GROUP BY source, provider, metric
+     ORDER BY source, provider, metric`,
     )
     .bind(from, to)
     .all<StoreTotal>();

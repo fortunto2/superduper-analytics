@@ -45,7 +45,7 @@ describe("reading Apple's sales report", () => {
       {
         day: "2026-08-01",
         source: "carettafriends",
-        store: "appstore",
+        provider: "appstore",
         metric: "installs",
         campaign: "",
         country: "TR",
@@ -175,7 +175,7 @@ describe("UTC day arithmetic", () => {
 const row = (over: Partial<StoreRow> = {}): StoreRow => ({
   day: "2026-08-01",
   source: "carettafriends",
-  store: "appstore",
+  provider: "appstore",
   metric: "installs",
   campaign: "",
   country: "TR",

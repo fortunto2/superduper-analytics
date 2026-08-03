@@ -72,7 +72,7 @@ describe("the snippet as shipped", () => {
 /** Minimal DOM: enough for the snippet to believe it is on a page. */
 function run(
   source: string | undefined,
-  opts: { viaCurrentScript?: boolean; webdriver?: boolean; ua?: string } = {},
+  opts: { viaCurrentScript?: boolean; webdriver?: boolean; ua?: string; search?: string } = {},
 ) {
   const viaCurrentScript = opts.viaCurrentScript !== false;
   const sent: unknown[] = [];
@@ -83,7 +83,7 @@ function run(
     addEventListener: (type: string, fn: (e?: unknown) => void) => {
       (listeners[type] ??= []).push(fn);
     },
-    location: { pathname: "/pricing", host: "example.com" },
+    location: { pathname: "/pricing", host: "example.com", search: opts.search ?? "" },
     history: { pushState: () => undefined, replaceState: () => undefined },
   } as Record<string, unknown>;
 
@@ -117,6 +117,7 @@ function run(
     Date,
     JSON,
     Array,
+    URLSearchParams,
     fetch: () => undefined,
   };
 
@@ -326,5 +327,55 @@ describe("how a stale browser gets the new snippet", () => {
   it("lets a returning visitor run the cached copy while fetching the fix behind their back", async () => {
     const res = await SELF.fetch("https://analytics.example/sda.js");
     expect(res.headers.get("cache-control")).toContain("stale-while-revalidate=");
+  });
+});
+
+describe("carrying the campaign that produced the visit", () => {
+  const first = (r: { sent: unknown[] }) =>
+    (r.sent as { events: Record<string, unknown>[] }[])[0]?.events[0];
+
+  it("reads the three utm tags by name", () => {
+    const r = run("carettafriends", {
+      search: "?utm_source=youtube&utm_medium=shorts&utm_campaign=nest-01",
+    });
+    r.hide();
+    expect(first(r)?.utm).toEqual({
+      source: "youtube",
+      medium: "shorts",
+      campaign: "nest-01",
+    });
+  });
+
+  it("sends nothing at all when there is no campaign — no byte on the common case", () => {
+    const r = run("carettafriends");
+    r.hide();
+    expect(first(r)).not.toHaveProperty("utm");
+  });
+
+  it("never carries the rest of the query string, which is where tokens live", () => {
+    const r = run("carettafriends", {
+      search: "?utm_campaign=nest-01&token=secret&email=a@b.co",
+    });
+    r.hide();
+    const body = JSON.stringify(r.sent);
+    expect(body).toContain("nest-01");
+    expect(body).not.toContain("secret");
+    expect(body).not.toContain("a@b.co");
+  });
+
+  it("keeps the campaign across SPA routes, where the tags have left the URL", () => {
+    const r = run("carettafriends", { search: "?utm_campaign=nest-01" });
+    (r.win.location as { pathname: string }).pathname = "/gallery";
+    (r.win.history as { pushState: () => void }).pushState();
+    r.hide();
+    const events = (r.sent as { events: Record<string, unknown>[] }[]).flatMap((b) => b.events);
+    expect(events).toHaveLength(2);
+    expect(events.every((e) => (e.utm as { campaign?: string })?.campaign === "nest-01")).toBe(true);
+  });
+
+  it("takes a partial tag set rather than requiring all three", () => {
+    const r = run("carettafriends", { search: "?utm_source=telegram" });
+    r.hide();
+    expect(first(r)?.utm).toEqual({ source: "telegram" });
   });
 });

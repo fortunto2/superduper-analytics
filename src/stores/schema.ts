@@ -44,7 +44,8 @@ export type StoreRow = {
   day: string;
   /** Registry id — the same namespace as `source` on an event, which is what makes them comparable. */
   source: string;
-  store: "appstore" | "play";
+  /** Who reported it: "appstore", "play", "youtube", later an ad network. Open by design. */
+  provider: string;
   metric: string;
   /** `ct` on Apple, `utm_campaign` on Play. Empty when the report is not broken down by campaign. */
   campaign: string;

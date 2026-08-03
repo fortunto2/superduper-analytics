@@ -1,6 +1,13 @@
--- What the stores say about themselves. Applied with `make db`.
+-- What somebody else counted about us, one row per day: the stores, YouTube, and later the ad
+-- networks. Applied with `make db`.
 --
--- Long and narrow — one row per (day, source, store, metric) — rather than a column per metric.
+-- One table for all of them because the shape is identical — a day, one of our sources, who
+-- reported it, what was measured, how much. Splitting per provider would mean a new table and a
+-- new query for every channel, and the question that matters ("what did this campaign produce
+-- across everything") would need a union of all of them.
+--
+-- Long and narrow — one row per (day, source, provider, metric) — rather than a column per
+-- metric.
 -- Apple and Google expose different metric sets and both keep adding to them; a wide table would
 -- need a migration for each, and this needs none. It also matches how the numbers are read: the
 -- dashboard asks for one metric over a date range, never for all of them at once.
@@ -14,7 +21,11 @@ CREATE TABLE IF NOT EXISTS store_daily (
   -- The registry id, the same namespace as `source` on an event. This is what lets a landing
   -- visit and an install sit in one row of the dashboard without a join table.
   source   TEXT NOT NULL,
-  store    TEXT NOT NULL CHECK (store IN ('appstore', 'play')),
+  -- Who reported it: 'appstore', 'play', 'youtube', later the ad networks. NO CHECK constraint,
+  -- and that is a decision rather than an oversight: the list of providers is going to grow, and
+  -- a CHECK over a growing list is a migration per channel to enforce something the code that
+  -- writes here already knows. Same reasoning as `metric` being free text.
+  provider TEXT NOT NULL,
   -- See METRICS in src/stores/schema.ts. Free text on purpose: a store adding a metric must not
   -- require a migration, and an unknown metric is better stored than dropped.
   metric   TEXT NOT NULL,
@@ -26,7 +37,7 @@ CREATE TABLE IF NOT EXISTS store_daily (
   value    REAL NOT NULL,
   -- When we fetched it. A restated number changes `value` and this; the day it describes does not.
   fetched  INTEGER NOT NULL,
-  PRIMARY KEY (day, source, store, metric, campaign, country)
+  PRIMARY KEY (day, source, provider, metric, campaign, country)
 ) WITHOUT ROWID;
 
 -- The dashboard always asks "this source, this window", so that is the index. The primary key
@@ -37,12 +48,12 @@ CREATE INDEX IF NOT EXISTS store_daily_source_day ON store_daily (source, day);
 -- or trusts a date computed from the clock — and the clock is right up until the day a run is
 -- missed, which is the day the gap silently becomes permanent.
 CREATE TABLE IF NOT EXISTS store_sync (
-  store   TEXT NOT NULL,
+  provider TEXT NOT NULL,
   source  TEXT NOT NULL,
   -- The most recent day successfully fetched. The job starts from here minus the restatement
   -- window, never from "yesterday".
   through TEXT NOT NULL,
   ran     INTEGER NOT NULL,
   note    TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (store, source)
+  PRIMARY KEY (provider, source)
 ) WITHOUT ROWID;

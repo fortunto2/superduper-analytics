@@ -94,7 +94,7 @@ export function parseSalesReport(
         totals.set(key, {
           day,
           source,
-          store: "appstore",
+          provider: "appstore",
           metric: m,
           campaign: "",
           country,

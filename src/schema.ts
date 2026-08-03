@@ -69,6 +69,25 @@ export const Event = z.object({
 
   /** Free-form measures — durations, counts, prices. */
   metrics: z.record(z.string().max(40), z.number()).optional(),
+
+  /**
+   * Where this visit came from, as an ALLOWLIST of three utm tags — never the query string.
+   *
+   * The query string is stripped at ingest and that stays true: it is where session tokens,
+   * password-reset links and email addresses live, and keeping it would turn this from a
+   * counter into a leak. But stripping everything also threw away the one thing a campaign
+   * needs, so the tags are read by name and nothing else survives.
+   *
+   * Not free-form props: Analytics Engine's SQL has no JSON functions, so anything that must
+   * appear in a GROUP BY has to be its own blob. "Which video sent people" is exactly that.
+   */
+  utm: z
+    .object({
+      source: z.string().max(64).optional(),
+      medium: z.string().max(64).optional(),
+      campaign: z.string().max(64).optional(),
+    })
+    .optional(),
 });
 
 export type Event = z.infer<typeof Event>;
@@ -125,6 +144,9 @@ export const BLOB_SLOTS = [
   "ua_kind", // 9  coarse: browser / app / bot
   "props_json", // 10  all of `props` as one canonical JSON object — see below
   "metrics_json", // 11  all of `metrics`, likewise
+  "utm_source", // 12  allowlisted campaign tags — see `utm` on Event. Appended 2026-08-03.
+  "utm_medium", // 13
+  "utm_campaign", // 14
 ] as const;
 
 /**
@@ -192,6 +214,15 @@ export type EnrichedEvent = {
    *  reported to the client instead of silently dropping a row later. */
   props_json?: string;
   metrics_json?: string;
+
+  /**
+   * The campaign that produced the visit. Own slots rather than a JSON blob because every
+   * question worth asking here — which video, which ad, which button — is a GROUP BY, and
+   * Analytics Engine's SQL cannot reach inside JSON.
+   */
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
 };
 
 /**

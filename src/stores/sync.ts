@@ -10,7 +10,7 @@ import { readSync, writeRows, writeSync } from "./db";
 import { dayBefore, daysBetween, RESTATEMENT_DAYS, utcDay } from "./schema";
 
 export type SyncResult = {
-  store: string;
+  provider: string;
   days: number;
   rows: number;
   skipped: number;
@@ -47,7 +47,7 @@ export async function syncAppStore(
   const { ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY, ASC_VENDOR_NUMBER } = env;
   if (!ASC_KEY_ID || !ASC_ISSUER_ID || !ASC_PRIVATE_KEY || !ASC_VENDOR_NUMBER) {
     return {
-      store: "appstore",
+      provider: "appstore",
       days: 0,
       rows: 0,
       skipped: 0,
@@ -111,5 +111,5 @@ export async function syncAppStore(
     );
   }
 
-  return { store: "appstore", days: days.length, rows, skipped, from, to, notes };
+  return { provider: "appstore", days: days.length, rows, skipped, from, to, notes };
 }

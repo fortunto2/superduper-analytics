@@ -233,3 +233,44 @@ describe("clock", () => {
     expect(tsOf(NOW + 60 * 60 * 1000)).toBe(NOW);
   });
 });
+
+describe("the campaign that produced a visit", () => {
+  it("keeps the three allowlisted tags and puts them in their own fields", () => {
+    const result = ingest(
+      {
+        events: [
+          {
+            source: "carettafriends",
+            platform: "web",
+            name: "page_viewed",
+            path: "/?utm_source=youtube",
+            utm: { source: "youtube", medium: "shorts", campaign: "nest-01" },
+          },
+        ],
+      },
+      { now: 1781524800000 },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events[0]).toMatchObject({
+      utm_source: "youtube",
+      utm_medium: "shorts",
+      utm_campaign: "nest-01",
+      // The query string is still stripped from the path — the tags arrive as fields, never
+      // by keeping the URL that also carries reset tokens and email addresses.
+      path: "/",
+    });
+  });
+
+  it("leaves the fields unset when there was no campaign", () => {
+    const result = ingest(
+      {
+        events: [{ source: "carettafriends", platform: "web", name: "page_viewed" }],
+      },
+      { now: 1781524800000 },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.events[0]?.utm_campaign).toBeUndefined();
+  });
+});

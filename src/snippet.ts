@@ -38,6 +38,12 @@
  * folds into an existing one and `page_engaged` is just an event name, and event names were
  * left open for exactly this.
  *
+ * IT CARRIES THE CAMPAIGN, NOT THE QUERY STRING. Three utm tags are read by name at load and
+ * kept in a variable for the life of the page — including across SPA routes, where the tags are
+ * gone from the URL but the visit is still the same arrival. Nothing is stored: no cookie, no
+ * localStorage, so the rule that keeps the consent banner away is untouched. The rest of the
+ * query string is never sent, because that is where reset tokens and email addresses live.
+ *
  * CLICKS ARE MARKUP, NOT CODE. A `data-sda-event` attribute anywhere on the page is reported
  * on click, with `data-sda-placement` as a prop. Thirteen sites would otherwise each grow
  * their own copy of the same four-line listener, and the outbound click — the store button,
@@ -62,7 +68,7 @@
 
 /** Bumped when the served snippet changes. It is the ETag, so a stale browser revalidates
  * with a 304 instead of downloading the string again — see the /sda.js route. */
-export const SNIPPET_VERSION = "2";
+export const SNIPPET_VERSION = "3";
 
 /** An hour: long enough to be free in practice, short enough that a fix lands the same day. */
 export const SNIPPET_CACHE_SECONDS = 3600;
@@ -81,6 +87,9 @@ var buf=[],timer,queued=w.sda&&w.sda.q,engaged;
 var nav=navigator,ua=nav.userAgent||"";
 var auto=!!(nav.webdriver||/HeadlessChrome|PhantomJS|Electron/i.test(ua))||undefined;
 function path(){return location.pathname||"/"}
+var utm=function(){var q=new URLSearchParams(location.search),o={},n;
+["source","medium","campaign"].forEach(function(k){var v=q.get("utm_"+k);if(v){o[k]=v.slice(0,64);n=1}});
+return n?o:undefined}();
 function ref(){var r=d.referrer;return r&&r.indexOf(location.host)<0?r:undefined}
 function flush(){
 if(!buf.length)return;
@@ -93,7 +102,7 @@ try{fetch(api,{method:"POST",body:body,keepalive:true,mode:"no-cors"})}catch(e2)
 }
 }
 function push(name,props,metrics){
-buf.push({source:src,platform:"web",name:name,ts:Date.now(),path:path(),referrer:ref(),version:ver,auto:auto,props:props,metrics:metrics});
+buf.push({source:src,platform:"web",name:name,ts:Date.now(),path:path(),referrer:ref(),version:ver,auto:auto,utm:utm,props:props,metrics:metrics});
 if(buf.length>=50)return flush();
 if(!timer)timer=setTimeout(flush,2000)
 }
