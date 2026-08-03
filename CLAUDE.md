@@ -9,8 +9,9 @@ and why.** Module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 read API, the web counter (`/sda.js`) and the dashboard (`/`) all work in production. Left:
 the Swift snippet, then v2's Iceberg archive.
 
-The counter is **installed nowhere yet** — the edge sees ~91k people a month across the zones
-and we record none of them. `docs/install.md` is the one-liner. Ingest has **no
+The counter is on **8 of the 14 sites**; `akbuzat.net` alone takes 5.5k edge hits a week and
+records nothing. Closing that is the top of `docs/roadmap.md` and it is one line per site —
+any new metric on an uncovered site is multiplied by zero. `docs/install.md` is the one-liner. Ingest has **no
 authentication**; the dashboard and `/v1/*` are behind `DASHBOARD_KEY` — see ARCHITECTURE.md.
 
 That host is effectively permanent: it goes into every site, every app and every privacy page.
@@ -53,6 +54,7 @@ docs/prd.md          the brief
 docs/tz-funnel-and-mobile.md  how site→install→purchase is attributed without an identifier
 db/schema.sql        the store-report tables. `make db` applies it
 docs/metrics.md      what the dashboard must show, and where each number comes from
+docs/roadmap.md      the order of work, and who blocks what. Read before starting anything
 ```
 
 Generated, never edited by hand: `src/registry.generated.ts` (committed) and
