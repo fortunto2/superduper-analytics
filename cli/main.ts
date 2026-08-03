@@ -15,11 +15,13 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EdgeContext } from "../src/ingest";
 import { MAX_EVENTS_PER_REQUEST } from "../src/schema";
+import { fetchAgents, renderAgents } from "./agents";
 import { checkRegistry, readRegistry, renderGenerated, sourceIdsOf } from "./registry";
 
 const DEFAULT_REGISTRY = "registry/sources.yaml";
 const DEFAULT_GENERATED = "src/registry.generated.ts";
 const DEFAULT_FIXTURES = "cli/fixtures";
+const DEFAULT_AGENTS = "src/agents.generated.ts";
 
 /**
  * A fixed clock and a fixed edge, so a replay is a function of the fixtures alone. The moment
@@ -45,6 +47,25 @@ function flag(name: string, fallback: string): string {
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
+}
+
+/**
+ * Refreshing the AI-agent list needs the network, and `gen` must survive without it: the
+ * committed file is the fallback, so a plane or a flaky DNS costs you a stale list rather than
+ * a broken build. Only a missing file is fatal.
+ */
+async function genAgents(): Promise<void> {
+  const outPath = flag("agents-out", DEFAULT_AGENTS);
+  try {
+    const agents = await fetchAgents();
+    writeFileSync(outPath, renderAgents(agents));
+    console.log(`${outPath} — ${agents.length} AI agents from ai.robots.txt`);
+  } catch (error) {
+    if (!existsSync(outPath)) throw error;
+    console.log(
+      `${outPath} — kept as is; could not refresh (${error instanceof Error ? error.message : String(error)})`,
+    );
+  }
 }
 
 function gen(): void {
@@ -140,6 +161,7 @@ try {
   switch (command) {
     case "gen":
       gen();
+      await genAgents();
       break;
     case "check":
       check();

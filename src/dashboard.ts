@@ -190,6 +190,25 @@ function render(o){
   }
   h+='</div>';
 
+  if(o.agents&&o.agents.agents.length){
+    var a=o.agents;
+    h+='<div class="card"><h2>AI agents reading '+esc(a.zone)+'</h2>'+
+      '<table><thead><tr><th>Agent</th><th>Operator</th><th>Why</th><th class="n">Requests</th></tr></thead><tbody>';
+    a.agents.forEach(function(x){
+      // An assistant fetching the page means a person asked something; a crawler means an
+      // index is being built. Same traffic, opposite meaning.
+      var why=x.category==='AI Assistant'?'answering someone':x.category==='AI Search'?'search result':'indexing';
+      h+='<tr><td class="name">'+esc(x.agent)+'</td><td class="sub">'+esc(x.operator||'—')+'</td>'+
+        '<td class="sub">'+esc(why)+'</td><td class="n">'+fmt(x.requests)+'</td></tr>'});
+    h+='</tbody></table>';
+    if(a.ai_paths.length) h+='<p class="sub" style="margin:14px 0 4px">What they read: '+
+      a.ai_paths.slice(0,6).map(function(p){return esc(p.path)+' ('+p.requests+')'}).join(', ')+'</p>';
+    h+='<p class="sub" style="margin:8px 0 0">Last 24 hours \u2014 the only window this dataset '+
+      'allows on the free plan. Verified by Cloudflare against the agent\u2019s own IP ranges, so '+
+      'a script cannot get listed here by calling itself ClaudeBot. These never reach our own '+
+      'counter: they do not run JavaScript.</p></div>';
+  }
+
   h+='<div class="card"><h2>Sources</h2>';
   if(!st.sources.length) h+='<p class="empty">No events in this window.</p>';
   else{

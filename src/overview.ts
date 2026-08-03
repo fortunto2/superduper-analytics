@@ -6,6 +6,7 @@
  * events tells "this site has no visitors" apart from "this site has no counter" — which is
  * the only honest way to know whether the rollout is finished.
  */
+import { fetchAgentTraffic, type AgentTraffic } from "./agents";
 import { SITES } from "./registry.generated";
 import { fetchStats, type Stats, type StatsEnv } from "./stats";
 import { fetchZoneTotals, listZones, zoneForHost, type ZonesEnv } from "./zones";
@@ -26,6 +27,8 @@ export type Overview = {
   coverage: Coverage[];
   /** False when the Cloudflare side could not be read; the page says so rather than guessing. */
   edge_available: boolean;
+  /** AI agents reading the busiest published zone. Last 24h only — the Free plan's ceiling. */
+  agents?: AgentTraffic;
   /** Registered sites, and how many actually reported. Counted per SITE, never per zone —
    *  six properties share the superduperai.co zone, so a zone count would claim six installs
    *  where there is one. */
@@ -87,11 +90,26 @@ export async function fetchOverview(
       .map((row) => row.source),
   );
 
+  // One zone only: each call is a subrequest and the answer is per-zone anyway. The busiest
+  // one is the one worth a slot on the page; the rest are a click away in Cloudflare.
+  let agents: AgentTraffic | undefined;
+  try {
+    const busiest = coverage[0];
+    if (busiest !== undefined) {
+      const zones = await listZones(env);
+      const zone = zones.find((z) => z.name === busiest.zone);
+      if (zone !== undefined) agents = await fetchAgentTraffic(env, zone, now);
+    }
+  } catch {
+    agents = undefined;
+  }
+
   return {
     ok: true,
     overview: {
       stats: stats.stats,
       coverage,
+      agents,
       edge_available: edgeAvailable,
       sites_total: SITES.length,
       sites_reporting: SITES.filter((s) => reporting.has(s.id)).length,
