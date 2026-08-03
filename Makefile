@@ -2,7 +2,7 @@
 # Every target must work from a clean checkout; `test` and `integration` must not need
 # network or Cloudflare credentials.
 
-.PHONY: help install gen check dev test typecheck lint format integration sync deploy tail clean
+.PHONY: help install gen check db stores dev test typecheck lint format integration sync deploy tail clean
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sort | \
