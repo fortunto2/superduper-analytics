@@ -22,6 +22,16 @@ export type Coverage = {
   ratio: number | null;
 };
 
+/**
+ * Регистрируемый домен: books.superduperai.co и superduperai.co — одна семья.
+ * Наивно, по двум последним меткам — этого хватает для .com/.co/.net/.org/.app,
+ * а списка публичных суффиксов ради группировки в таблице тащить не стоит.
+ */
+export function domainFamily(host: string): string {
+  const parts = host.split(".");
+  return parts.length <= 2 ? host : parts.slice(-2).join(".");
+}
+
 export type Overview = {
   stats: Stats;
   coverage: Coverage[];
@@ -103,6 +113,19 @@ export async function fetchOverview(
   } catch {
     agents = undefined;
   }
+
+  // Подклеиваем к каждому источнику его домен, чтобы поддомены одного продукта стояли
+  // рядом, а не разлетались по таблице по числу событий. У приложений хоста нет — им
+  // достаётся домен одноимённого сайта, если он есть, иначе собственный id.
+  const hostOf = new Map<string, string>(SITES.map(s => [s.id, domainFamily(s.host)]));
+  stats.stats.sources = stats.stats.sources
+    .map(row => ({ ...row, domain: hostOf.get(row.source) ?? row.source }))
+    .sort(
+      (a, b) =>
+        a.domain.localeCompare(b.domain) ||
+        a.source.localeCompare(b.source) ||
+        b.events - a.events,
+    );
 
   return {
     ok: true,

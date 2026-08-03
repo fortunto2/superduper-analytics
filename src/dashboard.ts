@@ -214,9 +214,17 @@ function render(o){
   else{
     h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People</th>'+
        '<th class="n">Page views</th><th class="n">Engaged</th><th class="n">Bot events</th></tr></thead><tbody>';
+    // Источники приходят уже сгруппированными по домену. Показываем домен один раз на
+    // группу: повторять его в каждой строке — шум, а не структура.
+    var lastDomain=null;
     st.sources.forEach(function(r){
       var mostly=r.events>0&&r.bot_events/r.events>0.5;
-      h+='<tr><td class="name">'+esc(r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
+      if(r.domain&&r.domain!==lastDomain){
+        lastDomain=r.domain;
+        h+='<tr><td colspan="5" class="sub" style="padding-top:14px;border-top:1px solid var(--grid)">'+
+          esc(r.domain)+'</td></tr>';
+      }
+      h+='<tr><td class="name" style="padding-left:12px">'+esc(r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
         '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td>'+
         '<td class="n">'+fmt(r.page_views)+'</td>'+
         '<td class="n">'+fmt(r.engaged)+'</td>'+

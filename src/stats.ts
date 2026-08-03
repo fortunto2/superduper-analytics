@@ -33,6 +33,8 @@ export type SourceTotal = {
   people_seen: number;
   /** 1 means nothing was dropped; above 1 means `people_seen` understates. */
   max_sample: number;
+  /** Registrable domain, attached by overview.ts so a product's subdomains sit together. */
+  domain?: string;
 };
 
 export type DayTotal = { day: string; events: number };
