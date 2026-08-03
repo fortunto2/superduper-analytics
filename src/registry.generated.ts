@@ -48,3 +48,19 @@ export const SITES = [
   { id: "superduperai", host: "superduperai.co", url: "https://superduperai.co", open: true },
   { id: "you2idea", host: "you2idea.com", url: "https://you2idea.com", open: false },
 ] as const;
+
+/** Apps with the id their store knows them by — what the daily store-report job iterates. */
+export const APPS = [
+  { id: "carettafriends", platform: "ios", storeId: "6794324877", site: "carettafriends" },
+  { id: "currencypal", platform: "ios", storeId: "6759005730", site: null },
+  { id: "driveandblock", platform: "ios", storeId: "6759738953", site: null },
+  { id: "facealarm", platform: "ios", storeId: "6758454962", site: "facealarm" },
+  { id: "jawharpsynth", platform: "ios", storeId: "6758465213", site: null },
+  { id: "kissmytask", platform: "ios", storeId: "6758514439", site: null },
+  { id: "life2film", platform: "ios", storeId: "6761656888", site: "life2film" },
+  { id: "live2play", platform: "ios", storeId: "6794370589", site: "live2play" },
+  { id: "photosweep", platform: "ios", storeId: "6794369239", site: null },
+  { id: "receiptbrain", platform: "ios", storeId: "6759008528", site: null },
+  { id: "superfinans", platform: "ios", storeId: "6759007613", site: null },
+  { id: "swift-terminal", platform: "ios", storeId: "6758515520", site: null },
+] as const;

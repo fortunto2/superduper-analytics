@@ -29,6 +29,30 @@
     { "binding": "EVENTS", "dataset": "superduper_events" }
   ],
 
+  // What the stores report about themselves: installs, product page views, money. NOT Analytics
+  // Engine, and the reason is the whole design. AE samples — every aggregate there needs
+  // `sum(_sample_interval)` weighting — while Apple hands over exact daily totals that were
+  // never sampled. Weighting an exact number inflates it; not weighting it in a table where
+  // everything else is weighted is a trap for the next query. On top of that AE deletes after
+  // 3 months, and this is the business history: it must outlive that by years.
+  //
+  // Tiny data — one row per app per day per metric, ~4k rows a year — which is what SQLite is
+  // for. The free tier is five gigabytes.
+  "d1_databases": [
+    {
+      "binding": "STORES",
+      "database_name": "superduper-stores",
+      "database_id": "51196886-11a1-4542-96ce-3c5e660f69fb"
+    }
+  ],
+
+  // Once a day, a few hours after midnight UTC, because a store report for "yesterday" does not
+  // exist at 00:01 — Apple restates recent days, so the job re-fetches a trailing window and
+  // upserts rather than appending.
+  "triggers": {
+    "crons": ["0 5 * * *"]
+  },
+
   // The binding cannot tell you the dataset name at runtime, and the SQL API needs it as a
   // table name. Declared here so it is stated once, next to the binding it must match.
   "vars": {

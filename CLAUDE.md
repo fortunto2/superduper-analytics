@@ -41,6 +41,7 @@ src/anon.ts          the per-day edge-derived id. Nothing is stored on the devic
 src/snippet.ts       the web counter, served at /sda.js. A string, not a build artefact
 src/sinks/           where events land. Dumb by design: positions, nothing else
 src/stats.ts         reads the hot store over the SQL API. Never writes
+src/stores/          what Apple and Google report: exact daily totals, in D1, not in AE
 src/zones.ts         Cloudflare's own edge analytics. Where "how many people" comes from
 src/overview.ts      assembles both for the dashboard — never sums them
 src/dashboard.ts     the page at /. One self-contained string, no framework
@@ -50,6 +51,7 @@ registry/sources.yaml  every site and app; adding one is ONE COMMIT
 cli/                 gen · check · replay; how `make integration` works without a network
 docs/prd.md          the brief
 docs/tz-funnel-and-mobile.md  how site→install→purchase is attributed without an identifier
+db/schema.sql        the store-report tables. `make db` applies it
 ```
 
 Generated, never edited by hand: `src/registry.generated.ts` (committed) and
@@ -68,7 +70,13 @@ first has drifted.
    Sampling was already active at 259 events. Table in ARCHITECTURE.md.
 3. **Analytics Engine deletes after 3 months.** Anything historical must come from the archive.
    Never let a chart quietly fall back between the two.
-4. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or
+4. **Store numbers are not events, and D1 is not Analytics Engine.** Apple hands over exact
+   daily totals that were never sampled — weighting them with `sum(_sample_interval)` would
+   inflate them, and not weighting them inside AE would make one table need two query dialects.
+   They also outlive AE's 3 months by years. So they live in D1, and the dashboard shows them
+   beside our numbers and **never adds the two**: "people on a landing page" and "installs" are
+   different things counted by different parties.
+5. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or
    dashboard may create a source — otherwise the git file stops being the truth.
 
 ## Do / Don't

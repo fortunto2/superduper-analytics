@@ -107,10 +107,34 @@ export function sitesOf(
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/**
+ * Apps with the id the store knows them by. The daily store-report job iterates this: without
+ * it the job would need its own list of app ids, and a second list is a list that goes stale.
+ */
+export function appsOf(
+  registry: RegistryFile,
+): { id: string; platform: string; storeId: string; site: string | null }[] {
+  return registry.apps
+    .map((app) => ({
+      id: app.id,
+      platform: app.platform,
+      storeId: app.app_id,
+      site: app.site ?? null,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id) || a.platform.localeCompare(b.platform));
+}
+
 /** The exact contents of src/registry.generated.ts. Compared byte-for-byte by `check`. */
 export function renderGenerated(registry: RegistryFile): string {
   const ids = sourceIdsOf(registry)
     .map((id) => `  ${JSON.stringify(id)},`)
+    .join("\n");
+  const apps = appsOf(registry)
+    .map(
+      (a) =>
+        `  { id: ${JSON.stringify(a.id)}, platform: ${JSON.stringify(a.platform)}, ` +
+        `storeId: ${JSON.stringify(a.storeId)}, site: ${a.site === null ? "null" : JSON.stringify(a.site)} },`,
+    )
     .join("\n");
   const sites = sitesOf(registry)
     .map(
@@ -134,6 +158,11 @@ ${ids}
 /** Sites only, with the hostname used to match a site against its Cloudflare zone. */
 export const SITES = [
 ${sites}
+] as const;
+
+/** Apps with the id their store knows them by — what the daily store-report job iterates. */
+export const APPS = [
+${apps}
 ] as const;
 `;
 }

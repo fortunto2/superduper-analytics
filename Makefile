@@ -39,6 +39,13 @@ integration: check ## replay fixtures through the pipeline — no network, no cr
 sync: ## apply registry/sources.yaml — allowed origins, write keys, partitions
 	pnpm tsx cli/main.ts sync --registry registry/sources.yaml
 
+db: ## apply db/schema.sql to the store-reports database (idempotent)
+	pnpm wrangler d1 execute superduper-stores --remote --file db/schema.sql
+
+stores: ## run the daily store-report job now, against production
+	@curl -fsS -X POST -H "Authorization: Bearer $$DASHBOARD_KEY" \
+	  "https://analytics.superduperai.co/v1/stores/sync$${FROM:+?from=$$FROM}" | python3 -m json.tool
+
 deploy: gen ## deploy the Worker
 	pnpm wrangler deploy
 
