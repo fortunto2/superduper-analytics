@@ -49,6 +49,7 @@ src/index.ts         Worker entry: routing, CORS, auth. Thin by design
 registry/sources.yaml  every site and app; adding one is ONE COMMIT
 cli/                 gen · check · replay; how `make integration` works without a network
 docs/prd.md          the brief
+docs/tz-funnel-and-mobile.md  how site→install→purchase is attributed without an identifier
 ```
 
 Generated, never edited by hand: `src/registry.generated.ts` (committed) and
