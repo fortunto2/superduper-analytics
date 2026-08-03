@@ -35,6 +35,7 @@ export const SOURCE_IDS = [
 export const SITES = [
   { id: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false },
   { id: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false },
+  { id: "carettafriends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false },
   { id: "editor", host: "editor.superduperai.co", url: "https://editor.superduperai.co", open: false },
   { id: "facealarm", host: "face-alarm.com", url: "https://face-alarm.com", open: false },
   { id: "life2film", host: "life2film.com", url: "https://life2film.com", open: true },

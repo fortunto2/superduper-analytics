@@ -42,6 +42,11 @@ sites:
     url: https://rustman.org
   - id: akbuzat
     url: https://akbuzat.net
+  # Тот же id, что у приложения ниже — один продукт, одна воронка, как у live2play.
+  # `id` постоянен: он партиционирует архив. Если сайт переедет на carettafriends.com,
+  # менять надо только `url`, иначе история осиротеет.
+  - id: carettafriends
+    url: https://app.carettafriends.com
 
 # Apple `app_id` is the App Store Connect numeric id — handy for joining store analytics later.
 apps:
@@ -68,6 +73,7 @@ apps:
     platform: ios
     bundle_id: com.carettafriends.app
     app_id: "6794324877"
+    site: carettafriends
   - id: currencypal
     platform: ios
     bundle_id: co.superduperai.currencypal
