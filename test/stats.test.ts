@@ -52,7 +52,7 @@ describe("parseRows", () => {
   it("coerces the string aggregates the SQL API returns", () => {
     const row = { source: "books", platform: "web", events: "42", page_views: "40", people_raw: "9" };
     expect(parseRows({ data: [row] })).toEqual([
-      { source: "books", platform: "web", events: 42, bot_events: 0, page_views: 40, people_seen: 9, max_sample: 1 },
+      { source: "books", platform: "web", events: 42, bot_events: 0, page_views: 40, engaged: 0, people_seen: 9, max_sample: 1 },
     ]);
   });
 

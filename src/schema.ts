@@ -43,6 +43,17 @@ export const Event = z.object({
   /** Client timestamp (ms). Advisory only — ingest stamps the authoritative server time. */
   ts: z.number().int().positive().optional(),
 
+  /**
+   * The client says it is automated — `navigator.webdriver`, or a headless user agent.
+   * Honest automation sets this; dishonest automation lies about everything anyway, so this
+   * costs one boolean and catches the large, careless majority: SEO crawlers, uptime monitors
+   * and scrapers built on Playwright or Puppeteer, all of which DO run JavaScript and would
+   * otherwise be indistinguishable from a person.
+   *
+   * Not a slot: it folds into `ua_kind` at ingest, so the wire format is unchanged.
+   */
+  auto: z.boolean().optional(),
+
   /** Where it happened: page path, or app screen. Query strings are stripped at ingest. */
   path: z.string().max(512).optional(),
   referrer: z.string().max(512).optional(),

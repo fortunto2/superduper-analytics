@@ -19,6 +19,8 @@ export type SourceTotal = {
   bot_events: number;
   /** Page views from clients NOT classified as bots. This is the number worth reading. */
   page_views: number;
+  /** Of those, how many saw a scroll, click or keypress. The hardest signal to fake cheaply. */
+  engaged: number;
   /**
    * Distinct anonymous ids among non-bot rows. A LOWER BOUND: Analytics Engine samples, and a
    * sampled-away row takes its `anon` with it, so no weighting recovers it. `max_sample` says
@@ -43,6 +45,7 @@ export type Stats = {
   total_bot_events: number;
   /** Non-bot page views, and the distinct non-bot ids behind them. */
   total_page_views: number;
+  total_engaged: number;
   total_people: number;
   /** True when sampling actually dropped rows, i.e. when `people_seen` is understated. */
   sampling_active: boolean;
@@ -77,6 +80,9 @@ export function buildQuery(dataset: string, days: number): string {
     // is a fact about that source, and hiding it is how a number quietly becomes wrong.
     "  sum(if(blob9 = 'bot', _sample_interval, 0)) AS bot_events,",
     "  sum(if(blob9 != 'bot' AND blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
+    // Loading a page is what a crawler does; scrolling or clicking is what a person does. This
+    // is the strongest human signal in the dataset and it costs one event per visit.
+    "  sum(if(blob9 != 'bot' AND blob3 = 'page_engaged', _sample_interval, 0)) AS engaged,",
     // `uniq()` does not exist in this dialect; `count(DISTINCT …)` does. It is a lower bound
     // under sampling, which is why max_sample rides along to say when to distrust it.
     //
@@ -111,6 +117,7 @@ export function parseRows(payload: unknown): SourceTotal[] {
       events: Number(row.events ?? 0),
       bot_events,
       page_views: Number(row.page_views ?? 0),
+      engaged: Number(row.engaged ?? 0),
       people_seen: Math.max(0, people_raw - (bot_events > 0 ? 1 : 0)),
       max_sample: Number(row.max_sample ?? 1),
     };
@@ -209,6 +216,7 @@ export async function fetchStats(
       total_events: sources.reduce((sum, row) => sum + row.events, 0),
       total_bot_events: sources.reduce((sum, row) => sum + row.bot_events, 0),
       total_page_views: sources.reduce((sum, row) => sum + row.page_views, 0),
+      total_engaged: sources.reduce((sum, row) => sum + row.engaged, 0),
       // Summed across sources rather than counted globally: the same person on two sites is
       // two ids anyway, since `anon` is derived per day and never joined across properties.
       total_people: sources.reduce((sum, row) => sum + row.people_seen, 0),

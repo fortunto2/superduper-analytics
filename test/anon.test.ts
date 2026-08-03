@@ -74,3 +74,25 @@ describe("who owns the anon id", () => {
     );
   });
 });
+
+describe("a client that admits to being automated", () => {
+  const run = (event: Record<string, unknown>) => {
+    const result = ingest({ events: [event] }, { now: NOON, userAgent: UA });
+    if (!result.ok) throw new Error(JSON.stringify(result.body));
+    return result.events[0]?.ua_kind;
+  };
+
+  it("is a bot even behind a perfectly ordinary browser user agent", () => {
+    expect(run({ source: "books", platform: "web", name: "page_viewed", auto: true })).toBe("bot");
+  });
+
+  it("is a bot on any platform, not just web", () => {
+    expect(run({ source: "photosweep", platform: "ios", name: "app_launched", auto: true })).toBe(
+      "bot",
+    );
+  });
+
+  it("is left alone when it says nothing", () => {
+    expect(run({ source: "books", platform: "web", name: "page_viewed" })).toBe("browser");
+  });
+});

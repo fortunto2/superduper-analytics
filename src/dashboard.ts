@@ -162,6 +162,7 @@ function render(o){
   h+='<div class="tiles">'+
     tile('People',fmt(st.total_people),'ours, bots excluded',true)+
     tile('Page views',fmt(st.total_page_views),'bots excluded')+
+    tile('Engaged',fmt(st.total_engaged),'scrolled, clicked or typed')+
     tile('Bot events',fmt(st.total_bot_events),botShare+'% of everything received')+
     tile('Counters live',o.sites_reporting+' / '+o.sites_total,'registered sites')+
   '</div>';
@@ -193,12 +194,13 @@ function render(o){
   if(!st.sources.length) h+='<p class="empty">No events in this window.</p>';
   else{
     h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People</th>'+
-       '<th class="n">Page views</th><th class="n">Bot events</th></tr></thead><tbody>';
+       '<th class="n">Page views</th><th class="n">Engaged</th><th class="n">Bot events</th></tr></thead><tbody>';
     st.sources.forEach(function(r){
       var mostly=r.events>0&&r.bot_events/r.events>0.5;
       h+='<tr><td class="name">'+esc(r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
         '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td>'+
         '<td class="n">'+fmt(r.page_views)+'</td>'+
+        '<td class="n">'+fmt(r.engaged)+'</td>'+
         '<td class="n"'+(mostly?' style="color:var(--warn)"':'')+'>'+fmt(r.bot_events)+'</td></tr>'});
     h+='</tbody></table>';
     if(st.sources.some(function(r){return r.max_sample>1}))

@@ -13,9 +13,17 @@ visitor leaves the page.
 
 ## What arrives without any further work
 
-`page_viewed` on load and on every SPA route change (`pushState`, `replaceState`, back/forward).
-Path with the query string stripped, referrer reduced to its host, country from the edge, and
-a `browser`/`bot` classification.
+`page_viewed` on load and on every SPA route change (`pushState`, `replaceState`, back/forward),
+and `page_engaged` once per page on the first scroll, click or keypress. Path with the query
+string stripped, referrer reduced to its host, country from the edge, and a `browser`/`bot`
+classification.
+
+**Telling people from crawlers** is the reason for both of the latter. A scraper loads a page;
+a person interacts with it, so `page_engaged` is the hardest signal to fake cheaply. On top of
+that the snippet declares `navigator.webdriver` and a headless user agent, which ingest folds
+into the `bot` classification — that catches the automation that runs JavaScript and would
+otherwise be indistinguishable from a visitor. It does not catch automation that deliberately
+hides, and nothing short of a challenge would.
 
 ## Custom events
 

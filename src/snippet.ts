@@ -29,6 +29,14 @@
  * SPA ROUTES COUNT. `pushState` and `replaceState` are wrapped, because otherwise a
  * single-page site reports one visit and then silence forever.
  *
+ * IT DECLARES AUTOMATION AND ENGAGEMENT. `navigator.webdriver` and a headless user agent are
+ * sent as `auto`, which ingest folds into `ua_kind` — that catches the scrapers that DO run
+ * JavaScript and would otherwise look exactly like people. A one-off `page_engaged` event
+ * fires on the first scroll, pointer or key press, because loading a page is what a crawler
+ * does and interacting with it is what a person does. Neither needs a new blob slot: `auto`
+ * folds into an existing one and `page_engaged` is just an event name, and event names were
+ * left open for exactly this.
+ *
  * IT DOES NOT TRUST `document.currentScript`. Host frameworks inject scripts their own way —
  * `next/script` builds the element in JavaScript — and a snippet that reads its configuration
  * from `currentScript` alone silently does nothing when it guesses wrong. The fallback finds
@@ -36,6 +44,11 @@
  *
  * The comments live here rather than inside the string because the string is what every
  * visitor downloads. Keeping them out is the difference between 2.2 KB and 1.5 KB.
+ *
+ * NO BACKSLASHES IN THE STRING. It is a template literal, so `\/` collapses to `/` before the
+ * browser ever sees it. A regex written as `/…|Electron\//i` therefore shipped as
+ * `/…|Electron//i` — terminating early and turning the rest into a division by `i`. The tests
+ * that execute the snippet caught it; nothing else would have.
  */
 
 /** Bumped when the served snippet changes; it is the cache key visitors actually see. */
@@ -54,7 +67,9 @@ var src=s&&s.dataset.source;
 if(!src){console.warn("[sda] missing data-source");return}
 var api=(s&&s.dataset.endpoint)||"https://analytics.superduperai.co/e";
 var ver=(s&&s.dataset.version)||undefined;
-var buf=[],timer,queued=w.sda&&w.sda.q;
+var buf=[],timer,queued=w.sda&&w.sda.q,engaged;
+var nav=navigator,ua=nav.userAgent||"";
+var auto=!!(nav.webdriver||/HeadlessChrome|PhantomJS|Electron/i.test(ua))||undefined;
 function path(){return location.pathname||"/"}
 function ref(){var r=d.referrer;return r&&r.indexOf(location.host)<0?r:undefined}
 function flush(){
@@ -68,14 +83,18 @@ try{fetch(api,{method:"POST",body:body,keepalive:true,mode:"no-cors"})}catch(e2)
 }
 }
 function push(name,props,metrics){
-buf.push({source:src,platform:"web",name:name,ts:Date.now(),path:path(),referrer:ref(),version:ver,props:props,metrics:metrics});
+buf.push({source:src,platform:"web",name:name,ts:Date.now(),path:path(),referrer:ref(),version:ver,auto:auto,props:props,metrics:metrics});
 if(buf.length>=50)return flush();
 if(!timer)timer=setTimeout(flush,2000)
 }
+function engage(){if(engaged)return;engaged=1;push("page_engaged")}
+["scroll","pointerdown","keydown"].forEach(function(e){
+w.addEventListener(e,engage,{passive:true})
+});
 d.addEventListener("visibilitychange",function(){if(d.visibilityState==="hidden")flush()});
 w.addEventListener("pagehide",flush);
 var seen=path();
-function route(){var p=path();if(p!==seen){seen=p;push("page_viewed")}}
+function route(){var p=path();if(p!==seen){seen=p;engaged=0;push("page_viewed")}}
 ["pushState","replaceState"].forEach(function(m){
 var orig=history[m];
 history[m]=function(){var r=orig.apply(this,arguments);route();return r}

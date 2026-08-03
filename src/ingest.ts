@@ -63,7 +63,11 @@ export function referrerHost(referrer: string | undefined): string | undefined {
 export function uaKind(
   platform: Event["platform"],
   userAgent: string | undefined,
+  auto = false,
 ): EnrichedEvent["ua_kind"] {
+  // A client that admits to being automated is taken at its word, on every platform — an
+  // automated app build reporting from CI is no more a person than a headless browser is.
+  if (auto) return "bot";
   if (platform !== "web") return "app";
   // Every real browser sends a user agent. Nothing that omits it is a person.
   if (userAgent === undefined || userAgent === "") return "bot";
@@ -115,7 +119,7 @@ function enrich(
     // because anything else would let a page claim to be a thousand different people. Apps
     // have no IP stability to derive from and send an install-scoped UUID instead.
     anon: event.platform === "web" ? (edge.anon ?? event.anon) : (event.anon ?? edge.anon),
-    ua_kind: uaKind(event.platform, edge.userAgent),
+    ua_kind: uaKind(event.platform, edge.userAgent, event.auto),
     ts: stampTime(event.ts, edge.now),
     props_json,
     metrics_json,
