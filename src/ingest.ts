@@ -112,6 +112,9 @@ function enrich(
     platform: event.platform,
     name: event.name,
     path: cleanPath(event.path),
+    // Поднимаем из props в свой слот: это не свободное поле, а размерность события клика,
+    // и без слота ответить «какая кнопка работает» нельзя — JSON в AE не разбирается.
+    placement: event.props?.placement,
     utm_source: event.utm?.source,
     utm_medium: event.utm?.medium,
     utm_campaign: event.utm?.campaign,

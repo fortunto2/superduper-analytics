@@ -196,6 +196,44 @@ app.get("/", (c) => c.redirect(`/dashboard${new URL(c.req.url).search}`, 302));
 app.get("/health", (c) => c.json({ ok: true, stage: "ingest" }));
 
 /**
+ * A favicon, so every dashboard load stops logging a 404 against itself. An SVG in the source
+ * rather than a binary in a bucket: it is nine bytes of shape, and a Worker that needs an asset
+ * pipeline to draw a square has the wrong kind of dependency.
+ */
+const FAVICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+  '<rect width="32" height="32" rx="7" fill="#111"/>' +
+  '<rect x="7" y="17" width="4" height="8" fill="#fff"/>' +
+  '<rect x="14" y="12" width="4" height="13" fill="#fff"/>' +
+  '<rect x="21" y="7" width="4" height="18" fill="#fff"/></svg>';
+
+app.get("/favicon.ico", (c) => {
+  c.header("content-type", "image/svg+xml");
+  c.header("cache-control", "public, max-age=604800");
+  return c.body(FAVICON);
+});
+
+/**
+ * The web snippet. Served from here so the thirteen sites embed a URL once and never need
+ * editing again — every later change to how a browser reports is a deploy.
+ */
+app.get("/sda.js", (c) => {
+  const etag = `"sda-${SNIPPET_VERSION}"`;
+  c.header("content-type", "application/javascript; charset=utf-8");
+  // `stale-while-revalidate` is what makes the hour survivable: a returning visitor runs the
+  // cached copy instantly AND the browser fetches the new one in the background.
+  c.header(
+    "cache-control",
+    `public, max-age=${SNIPPET_CACHE_SECONDS}, stale-while-revalidate=86400`,
+  );
+  c.header("etag", etag);
+  // The one file here that a third-party origin must be allowed to load.
+  c.header("access-control-allow-origin", "*");
+  if (c.req.header("if-none-match") === etag) return c.body(null, 304);
+  return c.body(SNIPPET);
+});
+
+/**
  * Ingest. One endpoint for web beacons and mobile flushes — same schema, so a landing visit
  * and an app launch are comparable without a join.
  */

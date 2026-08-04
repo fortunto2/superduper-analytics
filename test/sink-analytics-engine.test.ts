@@ -31,6 +31,7 @@ const full: EnrichedEvent = {
   utm_source: "youtube",
   utm_medium: "shorts",
   utm_campaign: "nest-01",
+  placement: "studio-hero",
 };
 
 describe("positions", () => {
@@ -52,6 +53,7 @@ describe("positions", () => {
       "youtube", // blob12 utm_source
       "shorts", // blob13 utm_medium
       "nest-01", // blob14 utm_campaign
+      "studio-hero", // blob15 placement
     ]);
   });
 

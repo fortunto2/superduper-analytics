@@ -86,6 +86,16 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
   },
   {
+    name: "goals",
+    title: "What people actually did",
+    description:
+      "Every event that is not a page view, per product and per placement: downloads, store " +
+      "links, signups started. These are what a site exists to produce, and they are single " +
+      "digits against hundreds of page views — which is why they get their own list rather " +
+      "than a row in the traffic table. Empty means nothing was marked up, or nobody clicked.",
+    inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
+  },
+  {
     name: "search",
     title: "Where Google shows us, and at what rank",
     description:
@@ -301,6 +311,30 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             "",
             "Store clicks are the last step we can see. What follows — product page views, " +
               "installs, purchases — is attributed by Apple to the same tag, aggregate only.",
+          ].join("\n"),
+          version,
+        );
+      }
+
+      if (name === "goals") {
+        const goals = stats.goals ?? [];
+        if (goals.length === 0) {
+          return toolText(
+            id,
+            `No goals in the last ${days} day(s). Either nothing is marked up with ` +
+              "data-sda-event, or nobody clicked what is.",
+            version,
+          );
+        }
+        return toolText(
+          id,
+          [
+            `Last ${days} day(s), ${goals.length} goal row(s).`,
+            "",
+            ...goals.map(
+              g =>
+                `- ${g.name} on ${g.source}${g.placement ? ` (${g.placement})` : ""} — ${g.count}`,
+            ),
           ].join("\n"),
           version,
         );

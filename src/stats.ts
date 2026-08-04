@@ -55,6 +55,8 @@ export type Stats = {
   pages?: Breakdown[];
   /** Откуда географически — страна с края. */
   countries?: Breakdown[];
+  /** Цели: всё, что не просмотр страницы. То, ради чего сайт существует. */
+  goals?: Goal[];
   window_days: number;
   /** Always true, and stated in the payload so a consumer cannot forget what these are. */
   sampled: true;
@@ -305,6 +307,51 @@ export function parseBreakdown(payload: unknown): Breakdown[] {
     .filter((row) => row.page_views > 0 || row.engaged > 0);
 }
 
+/** Одна цель: событие, которое не просмотр страницы. */
+export type Goal = { source: string; name: string; placement: string; count: number };
+
+/**
+ * Цели — всё, что не `page_viewed` и не `page_engaged`.
+ *
+ * Отдельный список, а не строка в общей таблице: просмотр это фон, а цель — то, ради чего сайт
+ * существует. Скачать бинарник, уйти в магазин, начать регистрацию. Их единицы против сотен
+ * просмотров, и в общей сортировке они не видны никогда.
+ *
+ * `placement` берётся из СЛОТА, а не из props: у SQL Analytics Engine нет функций для JSON, и
+ * без слота «какая кнопка работает» — вопрос без ответа.
+ */
+export function buildGoalsQuery(dataset: string, days: number): string {
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+  }
+  return [
+    "SELECT",
+    "  blob1 AS source,",
+    "  blob3 AS name,",
+    "  blob15 AS placement,",
+    "  sum(_sample_interval) AS count",
+    `FROM ${dataset}`,
+    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
+    "  AND blob9 != 'bot'",
+    "  AND blob3 != 'page_viewed' AND blob3 != 'page_engaged'",
+    "GROUP BY source, name, placement",
+    "ORDER BY count DESC",
+    "LIMIT 40",
+    "FORMAT JSON",
+  ].join("\n");
+}
+
+export function parseGoals(payload: unknown): Goal[] {
+  const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    source: String(row.source ?? ""),
+    name: String(row.name ?? ""),
+    placement: String(row.placement ?? ""),
+    count: Number(row.count ?? 0),
+  }));
+}
+
 export type StatsEnv = {
   DATASET: string;
   CF_ACCOUNT_ID?: string;
@@ -354,13 +401,14 @@ export async function fetchStats(
   // Арифметика: 10000 / 6 ≈ 1660 расчётов в сутки, то есть один раз в 52 секунды непрерывно.
   // Поэтому кэш обзора поднят до двух минут — открытая на втором мониторе панель иначе съедала
   // бы бюджет на числе, которое не изменилось.
-  const [totals, daily, campaigns, referrers, pages, countries] = await Promise.all([
+  const [totals, daily, campaigns, referrers, pages, countries, goals] = await Promise.all([
     ask(buildQuery(env.DATASET, days)),
     ask(buildDailyQuery(env.DATASET, days)),
     ask(buildCampaignQuery(env.DATASET, days)),
     ask(buildReferrerQuery(env.DATASET, days)),
     ask(buildPagesQuery(env.DATASET, days)),
     ask(buildCountryQuery(env.DATASET, days)),
+    ask(buildGoalsQuery(env.DATASET, days)),
   ]);
 
   if (!totals.ok) {
@@ -394,6 +442,7 @@ export async function fetchStats(
       referrers: referrers.ok ? parseBreakdown(await referrers.json()) : [],
       pages: pages.ok ? parseBreakdown(await pages.json()) : [],
       countries: countries.ok ? parseBreakdown(await countries.json()) : [],
+      goals: goals.ok ? parseGoals(await goals.json()) : [],
     },
   };
 }

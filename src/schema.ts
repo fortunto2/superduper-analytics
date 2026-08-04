@@ -147,6 +147,7 @@ export const BLOB_SLOTS = [
   "utm_source", // 12  allowlisted campaign tags — see `utm` on Event. Appended 2026-08-03.
   "utm_medium", // 13
   "utm_campaign", // 14
+  "placement", // 15  где на странице нажали — своя размерность, а не props. Дописано 2026-08-04.
 ] as const;
 
 /**
@@ -223,6 +224,15 @@ export type EnrichedEvent = {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
+
+  /**
+   * Где на странице нажали: `hero`, `footer`, `studio-hero`.
+   *
+   * Отдельный слот, а не ключ в `props`, по той же причине, что и `utm_*`: у SQL Analytics
+   * Engine нет функций для JSON, а «какая кнопка работает» — это GROUP BY. Приходит не от
+   * сайта произвольно, а из `data-sda-placement`, который ставит наш же обработчик кликов.
+   */
+  placement?: string;
 };
 
 /**

@@ -395,6 +395,25 @@ function render(o){
     'Direct visits are absent by definition \u2014 they carry no referrer, and a row for them '+
     'would read as \u201csource unknown\u201d rather than \u201cthere was no source\u201d. Only '+
     'the HOST is kept: a full referrer carries other people\u2019s search queries and tokens.');
+  // Цели — то, ради чего сайт существует. Стоят выше разрезов: просмотры это фон, а скачали
+  // или ушли в магазин — событие. Их единицы против сотен просмотров, и в общей таблице они
+  // не видны никогда.
+  var goals=(st.goals||[]).filter(function(r){return !cur||r.source===cur});
+  if(goals.length){
+    h+='<div class="card"><h2>Goals</h2><table><thead><tr><th>Goal</th>'+
+      (cur?'':'<th>Product</th>')+'<th>Where</th><th class="n">Count</th></tr></thead><tbody>';
+    goals.slice(0,15).forEach(function(g){
+      h+='<tr><td class="name">'+esc(g.name)+'</td>'+
+        (cur?'':'<td class="sub">'+esc(g.source)+'</td>')+
+        '<td class="sub">'+esc(g.placement||'\u2014')+'</td>'+
+        '<td class="n">'+fmt(g.count)+'</td></tr>'});
+    h+='</tbody></table><p class="sub" style="margin:14px 0 0">Everything that is not a page '+
+      'view: a download, a store link, a signup started. Marked up in HTML with '+
+      '<code>data-sda-event</code> and <code>data-sda-placement</code> \u2014 no JavaScript on '+
+      'the site. Bots excluded. A dash under Where means the event was sent by code rather '+
+      'than by a click on marked-up markup.</p></div>';
+  }
+
   // Поиск — единственный опережающий блок на странице, поэтому стоит ВЫШЕ остальных разрезов:
   // «где нас показывают и не кликают» это план на следующую неделю, а не отчёт за прошлую.
   var srch=(o.search||[]).filter(function(r){return !cur||r.site===cur});

@@ -57,7 +57,10 @@ stores: ## run the daily store-report job now, against production
 	fi; \
 	python3 -m json.tool < /tmp/sda-stores.json
 
-deploy: gen ## deploy the Worker
+# Тесты ПЕРЕД деплоем, а не рядом с ним. 2026-08-04 правка вырезала маршрут /sda.js вместе с
+# соседним блоком, тесты это ловили — но их прогнали через пять часов и шесть деплоев, и всё
+# это время снипет отдавал 404 на всех сайтах. Цель, которую можно не запустить, не защищает.
+deploy: gen test ## deploy the Worker
 	pnpm wrangler deploy
 
 tail: ## stream production logs
