@@ -10,6 +10,7 @@
  *   5. Only then Pipelines → R2 Iceberg (v2).
  */
 import { Hono } from "hono";
+import { accessIdentity } from "./access";
 import { deriveAnon } from "./anon";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
@@ -90,8 +91,27 @@ function authorized(c: { env: Bindings; req: { query: (k: string) => string | un
   return given === expected;
 }
 
+/**
+ * Two doors, and both must open onto the same room.
+ *
+ * Access is the real one — it is SSO, it expires, and it knows who you are. The shared key
+ * stays because a beacon, a cron and a CLI cannot do SSO, and because locking oneself out of
+ * the dashboard while debugging Access would be a poor kind of security.
+ *
+ * Order matters: the key is checked first because it costs nothing, and the Access path only
+ * fetches keys when there is a token to check.
+ */
+async function permitted(c: {
+  env: Bindings;
+  req: { query: (k: string) => string | undefined; header: (k: string) => string | undefined };
+}): Promise<boolean> {
+  if (authorized(c)) return true;
+  const who = await accessIdentity(c.env, c.req.header("cf-access-jwt-assertion"), Date.now());
+  return who !== undefined;
+}
+
 app.use("/dashboard", async (c, next) => {
-  if (!authorized(c)) return c.text("not found", 404);
+  if (!(await permitted(c))) return c.text("not found", 404);
   await next();
 });
 
@@ -103,7 +123,7 @@ app.use("/dashboard", async (c, next) => {
 app.all("/mcp", (c) => handleMcp(c.req.raw, c.env, Date.now()));
 
 app.use("/v1/*", async (c, next) => {
-  if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!(await permitted(c))) return c.json({ error: "unauthorized" }, 401);
   await next();
 });
 

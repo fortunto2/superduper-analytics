@@ -43,8 +43,19 @@ db: ## apply db/schema.sql to the store-reports database (idempotent)
 	pnpm wrangler d1 execute superduper-stores --remote --file db/schema.sql
 
 stores: ## run the daily store-report job now, against production
-	@curl -fsS -X POST -H "Authorization: Bearer $$DASHBOARD_KEY" \
-	  "https://analytics.superduperai.co/v1/stores/sync$${FROM:+?from=$$FROM}" | python3 -m json.tool
+	@code=$$(curl -s -o /tmp/sda-stores.json -w '%%{http_code}' -X POST \
+	  $${ACCESS_TOKEN:+-H "cf-access-token: $$ACCESS_TOKEN"} \
+	  $${CF_ACCESS_CLIENT_ID:+-H "CF-Access-Client-Id: $$CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $$CF_ACCESS_CLIENT_SECRET"} \
+	  -H "Authorization: Bearer $$DASHBOARD_KEY" \
+	  "https://analytics.superduperai.co/v1/stores/sync$${FROM:+?from=$$FROM}"); \
+	if [ "$$code" = "302" ]; then \
+	  echo "Cloudflare Access answered with a login redirect, not the job."; \
+	  echo "/v1/* is behind SSO now, and a shared bearer key is not an identity Access knows."; \
+	  echo "Either open https://analytics.superduperai.co/v1/stores/sync in a signed-in browser,"; \
+	  echo "or add a Service Auth policy to the app and export CF_ACCESS_CLIENT_ID/SECRET."; \
+	  exit 1; \
+	fi; \
+	python3 -m json.tool < /tmp/sda-stores.json
 
 deploy: gen ## deploy the Worker
 	pnpm wrangler deploy

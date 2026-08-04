@@ -177,3 +177,27 @@ describe("the private side lives under its own prefix", () => {
     expect((await SELF.fetch("https://analytics.example/sda.js")).status).toBe(200);
   });
 });
+
+describe("the second door: Cloudflare Access", () => {
+  const post = (jwt: string) =>
+    SELF.fetch("https://analytics.example/dashboard", {
+      headers: { "cf-access-jwt-assertion": jwt },
+    });
+
+  it("refuses a forged assertion — the header alone is not an identity", async () => {
+    // Three dot-separated blobs, valid base64url, nonsense signature. Believing this is exactly
+    // the bug the verification exists to prevent.
+    const fake = `${btoa('{"alg":"RS256","kid":"x"}')}.${btoa('{"email":"a@b.co","exp":9999999999}')}.AAAA`;
+    expect((await post(fake.replace(/=/g, ""))).status).toBe(404);
+  });
+
+  it("refuses junk in the header rather than throwing", async () => {
+    expect((await post("not-a-jwt")).status).toBe(404);
+    expect((await post("")).status).toBe(404);
+  });
+
+  it("still opens for the shared key, so Access cannot lock the owner out", async () => {
+    const res = await SELF.fetch(`https://analytics.example/dashboard?k=${env.DASHBOARD_KEY}`);
+    expect(res.status).toBe(200);
+  });
+});
