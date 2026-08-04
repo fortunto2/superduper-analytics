@@ -18,10 +18,15 @@
  * nobody is watching — and until now the only way to notice was to look.
  */
 import { RETENTION_DAYS } from "./schema";
-import { buildPagesQuery, buildQuery, parseBreakdown, parseRows, type StatsEnv } from "./stats";
+import { askSql, buildPagesQuery, buildQuery, parseBreakdown, parseRows, type StatsEnv } from "./stats";
 import { dayBefore, utcDay } from "./stores/schema";
 
-const SQL_ENDPOINT = "https://api.cloudflare.com/client/v4/accounts";
+/**
+ * Сколько страниц архивируется за сутки. Тысяча против шестидесяти на экране: у самого крупного
+ * сайта 3758 страниц за год, но в один день столько не читают, а хвост из «одна страница — один
+ * просмотр» стоит места и ничего не отвечает.
+ */
+const PAGE_ARCHIVE_LIMIT = 1000;
 
 export type RollupResult = {
   day: string;
@@ -47,27 +52,17 @@ export async function rollupDay(
     return { day, rows: 0, sources: 0, sampled: false, note: "not configured" };
   }
 
-  // Один день ровно: границы задаются явно, а не «за последние сутки», иначе прогон в 05:00
-  // и прогон в 06:00 записали бы разные числа в одну и ту же строку.
-  const sql = buildQuery(env.DATASET, RETENTION_DAYS)
-    .replace(
-      `WHERE timestamp > NOW() - INTERVAL '${RETENTION_DAYS}' DAY`,
-      // `toDate(timestamp) = 'YYYY-MM-DD'` — строка справа, но НЕ внутри toDate: эта функция
-      // не принимает STRING и отвечает 422. Сравнение timestamp со строкой напрямую тоже
-      // отвергается — DateTime и String не комбинируются. Работает ровно одна форма.
-      `WHERE toDate(timestamp) = '${day}'`,
-    );
-
-  const response = await fetch(`${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID}/analytics_engine/sql`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` },
-    body: sql,
-  });
-  if (!response.ok) {
-    return { day, rows: 0, sources: 0, sampled: false, note: `sql ${response.status}` };
+  // Окно — параметр, а не подмена строки в собранном SQL. Формат дня проверяет buildQuery.
+  let sources;
+  try {
+    const response = await askSql(env, buildQuery(env.DATASET, { day }));
+    if (!response.ok) {
+      return { day, rows: 0, sources: 0, sampled: false, note: `sql ${response.status}` };
+    }
+    sources = parseRows(await response.json());
+  } catch (error) {
+    return { day, rows: 0, sources: 0, sampled: false, note: String(error) };
   }
-
-  const sources = parseRows(await response.json());
   if (sources.length === 0) return { day, rows: 0, sources: 0, sampled: false, note: "no events" };
 
   const sampled = sources.some((r) => r.max_sample > 1);
@@ -115,17 +110,16 @@ export async function rollupPages(
     return { day, rows: 0, note: "not configured" };
   }
 
-  const sql = buildPagesQuery(env.DATASET, RETENTION_DAYS).replace(
-    `WHERE timestamp > NOW() - INTERVAL '${RETENTION_DAYS}' DAY`,
-    `WHERE toDate(timestamp) = '${day}'`,
-  );
-  const response = await fetch(
-    `${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    { method: "POST", headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` }, body: sql },
-  );
-  if (!response.ok) return { day, rows: 0, note: `sql ${response.status}` };
-
-  const rows = parseBreakdown(await response.json());
+  // Потолок, а не верхушка: LIMIT по умолчанию 60 — это про экран. В архив должны попасть
+  // все страницы всех сайтов за день, иначе тихий сайт исчезает из истории безвозвратно.
+  let rows;
+  try {
+    const response = await askSql(env, buildPagesQuery(env.DATASET, { day }, PAGE_ARCHIVE_LIMIT));
+    if (!response.ok) return { day, rows: 0, note: `sql ${response.status}` };
+    rows = parseBreakdown(await response.json());
+  } catch (error) {
+    return { day, rows: 0, note: String(error) };
+  }
   if (rows.length === 0) return { day, rows: 0, note: "no pages" };
 
   const statement = env.STORES.prepare(

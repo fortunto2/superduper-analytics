@@ -85,10 +85,36 @@ const SQL_ENDPOINT = "https://api.cloudflare.com/client/v4/accounts";
  * Blob positions are spelled out with their meaning because that is what the numbers are: a
  * wire format, not an implementation detail.
  */
-export function buildQuery(dataset: string, days: number): string {
-  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
-    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+/**
+ * Окно запроса: либо последние N суток, либо ровно один день.
+ *
+ * Один день нужен свёртке. Раньше она получала его подменой строки в уже собранном SQL — и это
+ * держалось на том, что текст WHERE в этом файле никто не переформатирует. Переформатировал бы —
+ * `.replace()` стал бы пустой операцией, фильтр остался бы 90-дневным, и свёртка записала бы
+ * квартал трафика в строку одного дня. Молча, потому что UPSERT.
+ *
+ * `day` проверяется формой: в SQL он попадает как литерал, и `?day=` из ручного запуска доходит
+ * сюда без другой проверки.
+ */
+export type Window = { days: number } | { day: string };
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function whereWindow(window: Window): string {
+  if ("day" in window) {
+    if (!DAY_RE.test(window.day)) throw new Error(`day must be YYYY-MM-DD, got ${window.day}`);
+    // toDate(timestamp) = 'YYYY-MM-DD' — единственная форма, которую принимает этот диалект:
+    // toDate() не берёт STRING, а timestamp не сравнивается со строкой напрямую.
+    return `WHERE toDate(timestamp) = '${window.day}'`;
   }
+  if (!Number.isInteger(window.days) || window.days < 1 || window.days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(window.days)}`);
+  }
+  return `WHERE timestamp > NOW() - INTERVAL '${window.days}' DAY`;
+}
+
+export function buildQuery(dataset: string, window: Window | number): string {
+  const w: Window = typeof window === "number" ? { days: window } : window;
   return [
     "SELECT",
     "  blob1 AS source,",
@@ -110,7 +136,7 @@ export function buildQuery(dataset: string, days: number): string {
     "  count(DISTINCT if(blob9 != 'bot', blob8, '')) AS people_raw,",
     "  max(_sample_interval) AS max_sample",
     `FROM ${dataset}`,
-    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
+    whereWindow(w),
     "GROUP BY source, platform",
     // ORDER BY must name the ALIAS. `ORDER BY blob1` after `blob1 AS source` fails with
     // "unable to find type of column" — the dialect resolves the select list first and forgets
@@ -241,9 +267,6 @@ export function parseCampaigns(payload: unknown): CampaignTotal[] {
 }
 
 /** Одна строка «откуда пришли» или «что читали» — форма у обоих вопросов одна. */
-/** Потолок окна для чужих запросов: не больше того, что вообще хранится. */
-export const RETENTION_DAYS_SAFE = RETENTION_DAYS;
-
 export type Breakdown = { source: string; key: string; page_views: number; engaged: number };
 
 /**
@@ -256,8 +279,8 @@ export type Breakdown = { source: string; key: string; page_views: number; engag
  * Прямые заходы сюда не попадают: у них реферера нет, и строка с пустым ключом означала бы
  * «источник неизвестен», а не «источника не было».
  */
-export function buildReferrerQuery(dataset: string, days: number): string {
-  return breakdown(dataset, days, "blob5", "AND blob5 != ''");
+export function buildReferrerQuery(dataset: string, window: Window | number, limit?: number): string {
+  return breakdown(dataset, window, "blob5", "AND blob5 != ''", limit);
 }
 
 /**
@@ -266,19 +289,29 @@ export function buildReferrerQuery(dataset: string, days: number): string {
  * Страна, а не город и не координаты. Город сузил бы круг до опознаваемого на сайте с тридцатью
  * посетителями в неделю, и это ровно та граница, за которой счётчик перестаёт быть анонимным.
  */
-export function buildCountryQuery(dataset: string, days: number): string {
-  return breakdown(dataset, days, "blob6", "AND blob6 != ''");
+export function buildCountryQuery(dataset: string, window: Window | number, limit?: number): string {
+  return breakdown(dataset, window, "blob6", "AND blob6 != ''", limit);
 }
 
 /** Что читали: путь без строки запроса — её срезает ingest, и в слот она не попадает. */
-export function buildPagesQuery(dataset: string, days: number): string {
-  return breakdown(dataset, days, "blob4", "AND blob4 != ''");
+export function buildPagesQuery(dataset: string, window: Window | number, limit?: number): string {
+  return breakdown(dataset, window, "blob4", "AND blob4 != ''", limit);
 }
 
-function breakdown(dataset: string, days: number, column: string, extra: string): string {
-  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
-    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
-  }
+function breakdown(
+  dataset: string,
+  window: Window | number,
+  column: string,
+  extra: string,
+  /**
+   * Сколько строк вернуть. Шестьдесят — для панели: там это верхушка по всему аккаунту, и
+   * больше на экране не нужно. Свёртке в архив нужен ПОТОЛОК, а не верхушка: с LIMIT 60 тихие
+   * сайты перестают попадать в архив вовсе, а Analytics Engine через 90 дней стирает исходник,
+   * и потеря невосстановима.
+   */
+  limit = 60,
+): string {
+  const w: Window = typeof window === "number" ? { days: window } : window;
   return [
     "SELECT",
     "  blob1 AS source,",
@@ -286,10 +319,10 @@ function breakdown(dataset: string, days: number, column: string, extra: string)
     "  sum(if(blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
     "  sum(if(blob3 = 'page_engaged', _sample_interval, 0)) AS engaged",
     `FROM ${dataset}`,
-    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob9 != 'bot' ${extra}`,
+    `${whereWindow(w)} AND blob9 != 'bot' ${extra}`,
     "GROUP BY source, key",
     "ORDER BY page_views DESC",
-    "LIMIT 60",
+    `LIMIT ${limit}`,
     "FORMAT JSON",
   ].join("\n");
 }
@@ -352,6 +385,19 @@ export function parseGoals(payload: unknown): Goal[] {
   }));
 }
 
+/**
+ * Один вызов SQL API на всех. Раньше эта пара строк жила в четырёх местах, и обработка ошибок
+ * успела разойтись: одна возвращала текст ответа, другая код, третья молча отдавала ноль строк
+ * как «страницу никто не читал».
+ */
+export function askSql(env: StatsEnv, sql: string): Promise<Response> {
+  return fetch(`${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID ?? ""}/analytics_engine/sql`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.CF_API_TOKEN ?? ""}` },
+    body: sql,
+  });
+}
+
 export type StatsEnv = {
   DATASET: string;
   CF_ACCOUNT_ID?: string;
@@ -389,16 +435,10 @@ export async function fetchStats(
     };
   }
 
-  const url = `${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID}/analytics_engine/sql`;
-  const ask = (sql: string) =>
-    fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.CF_API_TOKEN ?? ""}` },
-      body: sql,
-    });
+  const ask = (sql: string) => askSql(env, sql);
 
-  // ШЕСТЬ запросов на один обзор, и это не бесплатно: чтения метрятся, 10k в сутки на free.
-  // Арифметика: 10000 / 6 ≈ 1660 расчётов в сутки, то есть один раз в 52 секунды непрерывно.
+  // СЕМЬ запросов на один обзор, и это не бесплатно: чтения метрятся, 10k в сутки на free.
+  // Арифметика: 10000 / 7 ≈ 1430 расчётов в сутки, то есть один раз в минуту непрерывно.
   // Поэтому кэш обзора поднят до двух минут — открытая на втором мониторе панель иначе съедала
   // бы бюджет на числе, которое не изменилось.
   const [totals, daily, campaigns, referrers, pages, countries, goals] = await Promise.all([

@@ -8,11 +8,16 @@
  * `GET /feed` с ключом на источник: она работала, но требовала от потребителя двух секретов,
  * а от нас — их выдачи, хранения и отзыва. Ничего из этого больше не существует.
  */
-import { buildPagesQuery, parseBreakdown, RETENTION_DAYS_SAFE, type StatsEnv } from "./stats";
-import { readSearch } from "./search/sync";
+import { askSql, buildPagesQuery, parseBreakdown, type StatsEnv } from "./stats";
+import { RETENTION_DAYS } from "./schema";
+import { LAG_DAYS, readSearch } from "./search/sync";
 import { dayBefore, utcDay } from "./stores/schema";
 
-export const FEED_CACHE_SECONDS = 900;
+/**
+ * Строк из Analytics Engine до фильтра по источнику. Запрос группирует по всем источникам
+ * сразу, поэтому предел должен покрывать их все — иначе сайт вне верхушки получает пустой фид.
+ */
+const FEED_ROW_LIMIT = 1000;
 
 export type FeedEnv = StatsEnv & { STORES?: D1Database };
 
@@ -67,7 +72,7 @@ export async function buildFeed(
   days: number,
   now: number,
 ): Promise<FeedResult> {
-  const window = Math.min(Math.max(1, Math.trunc(days)), RETENTION_DAYS_SAFE);
+  const window = Math.min(Math.max(1, Math.trunc(days)), RETENTION_DAYS);
   const to = utcDay(now);
   const result: FeedResult = {
     source,
@@ -88,17 +93,12 @@ export async function buildFeed(
     return row;
   };
 
-  // Наши просмотры. Запрос общий для всех источников — фильтр здесь, а не в SQL, потому что
-  // тот же ответ уже кэшируется для панели, и второй почти такой же запрос стоил бы чтений.
+  // Наши просмотры. Предел поднят и строки всё равно фильтруются по источнику — но не после
+  // выборки, как было: LIMIT срезает ДО фильтра, и сайт вне глобальной верхушки получал пустой
+  // фид, неотличимый от «его никто не читал». Ровно эта ошибка уже была найдена и исправлена
+  // в readSearch по D1 — здесь она оставалась в той же функции.
   if (env.CF_ACCOUNT_ID !== undefined && env.CF_API_TOKEN !== undefined) {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` },
-        body: buildPagesQuery(env.DATASET, window),
-      },
-    );
+    const response = await askSql(env, buildPagesQuery(env.DATASET, window, FEED_ROW_LIMIT));
     if (response.ok) {
       for (const row of parseBreakdown(await response.json())) {
         if (row.source !== source) continue;
@@ -113,7 +113,7 @@ export async function buildFeed(
   // вернуло бы три пустых дня и заниженные показы.
   if (env.STORES !== undefined) {
     try {
-      const searchTo = dayBefore(to, 3);
+      const searchTo = dayBefore(to, LAG_DAYS);
       for (const row of await readSearch(
         env.STORES,
         "page",

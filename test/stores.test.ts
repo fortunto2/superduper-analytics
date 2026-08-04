@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import schemaSql from "../db/schema.sql?raw";
 import { findSilent, readOwnHistory } from "../src/rollup";
 import { RETENTION_DAYS } from "../src/schema";
-import { buildQuery } from "../src/stats";
+import { buildPagesQuery, buildQuery } from "../src/stats";
 import { parseSalesReport } from "../src/stores/appstore";
 import { readCampaigns, readTotals, readSync, writeRows, writeSync } from "../src/stores/db";
 import { dayBefore, daysBetween, utcDay, type StoreRow } from "../src/stores/schema";
@@ -288,5 +288,27 @@ describe("the archive of our own days", () => {
     const silent = await findSilent(env.STORES, "2026-08-10");
     // A site with three visitors a week has empty Tuesdays; one of them is a Tuesday, not a fault.
     expect(silent.map((s) => s.source)).toEqual(["quiet"]);
+  });
+});
+
+describe("окно запроса — параметр, а не подмена строки", () => {
+  it("за один день фильтрует по дате, а не по интервалу", () => {
+    const sql = buildQuery("events", { day: "2026-08-03" });
+    expect(sql).toContain("WHERE toDate(timestamp) = '2026-08-03'");
+    expect(sql).not.toContain("INTERVAL");
+  });
+
+  it("отвергает день неверной формы, а не подставляет его в SQL", () => {
+    // Раньше `?day=` из ручного запуска доходил до литерала в запросе без единой проверки.
+    expect(() => buildQuery("events", { day: "вчера" })).toThrow();
+    expect(() => buildQuery("events", { day: "2026-8-3" })).toThrow();
+    expect(() => buildQuery("events", { day: "2026-08-03' OR '1'='1" })).toThrow();
+  });
+
+  it("архиву даёт потолок, а не экранную верхушку", () => {
+    // LIMIT 60 — это про панель. В архив должны попасть все страницы всех сайтов за день,
+    // иначе тихий сайт исчезает из истории безвозвратно: Analytics Engine стирает через 90 дней.
+    expect(buildPagesQuery("events", { day: "2026-08-03" }, 1000)).toContain("LIMIT 1000");
+    expect(buildPagesQuery("events", 7)).toContain("LIMIT 60");
   });
 });

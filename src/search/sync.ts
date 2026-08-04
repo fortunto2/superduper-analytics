@@ -8,11 +8,25 @@
 import { fetchSearchDay, googleToken, listProperties, propertyFor, searchableSites, type SearchEnv, type SearchRow } from "./console";
 import { dayBefore, utcDay } from "../stores/schema";
 
-/** Насколько отстаёт консоль. Три дня — с запасом к её обычным двум. */
-const LAG_DAYS = 3;
+/** Насколько отстаёт консоль. Три дня — с запасом к её обычным двум. Экспортируется: читатели
+ *  обязаны сдвигать своё окно на столько же, иначе спрашивают день, который никто не писал. */
+export const LAG_DAYS = 3;
 
-/** И насколько глубоко перезабирать: столько дней она ещё уточняет. */
-const RESTATE_DAYS = 5;
+/**
+ * Насколько глубоко перезабирать — консоль ещё уточняет свежие дни.
+ *
+ * ДВА, а не пять, и это про потолок субзапросов. Воркер на бесплатном тарифе может сделать 50
+ * подзапросов за вызов, и все четыре суточных джоба делят этот лимит. При пяти днях выходило
+ * 13 сайтов × 5 × 2 разреза = 130 вызовов: джоб умирал примерно на пятом сайте, причём МОЛЧА —
+ * ошибки складывались в примечания, а не в отказ. При двух днях это 52 вызова, и они идут
+ * пачками, а не по очереди.
+ *
+ * Уточнения глубже двух дней подберёт следующий прогон: окно скользит каждые сутки.
+ */
+const RESTATE_DAYS = 2;
+
+/** Сколько запросов к Google держать в воздухе разом. */
+const CONCURRENCY = 6;
 
 export type SearchSyncResult = {
   provider: "search-console";
@@ -81,17 +95,27 @@ export async function syncSearchConsole(
       }
     };
 
-    const collected: SearchRow[] = [];
+    // Дни и разрезы одного сайта независимы — идут разом, а не по очереди. Последовательно
+    // это давало по секунде на вызов и минуты общего времени на ровном месте.
+    const tasks: { day: string; kind: "query" | "page" }[] = [];
     for (const day of days) {
-      for (const kind of ["query", "page"] as const) {
-        try {
-          collected.push(...(await fetchSearchDay(token, property, site.id, day, kind)).filter(mine));
-        } catch (error) {
-          // Один сайт без доступа не должен уносить остальные: ресурс мог быть не подтверждён
-          // для сервисного аккаунта, и это факт про настройку, а не сбой джоба.
-          notes.push(`${site.id} ${day} ${kind}: ${String(error)}`);
-        }
-      }
+      for (const kind of ["query", "page"] as const) tasks.push({ day, kind });
+    }
+    const collected: SearchRow[] = [];
+    for (let i = 0; i < tasks.length; i += CONCURRENCY) {
+      const chunk = await Promise.all(
+        tasks.slice(i, i + CONCURRENCY).map(async (t) => {
+          try {
+            return (await fetchSearchDay(token, property, site.id, t.day, t.kind)).filter(mine);
+          } catch (error) {
+            // Один сайт без доступа не должен уносить остальные: ресурс мог быть не подтверждён
+            // для сервисного аккаунта, и это факт про настройку, а не сбой джоба.
+            notes.push(`${site.id} ${t.day} ${t.kind}: ${String(error)}`);
+            return [];
+          }
+        }),
+      );
+      for (const rows of chunk) collected.push(...rows);
     }
     if (collected.length === 0) continue;
     await env.STORES.batch(

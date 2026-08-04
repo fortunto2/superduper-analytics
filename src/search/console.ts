@@ -190,12 +190,17 @@ export function propertyFor(siteUrl: string, properties: string[]): string | und
   const domain = `sc-domain:${host}`;
   if (properties.includes(domain)) return domain;
 
-  // Голый домен для поддомена — только если своего ресурса нет вовсе. Числа будут шире, чем
-  // сайт, и это записано в примечании прогона, а не спрятано.
+  // Голый домен для поддомена — когда своего ресурса нет вовсе. Раньше обе ветки здесь
+  // возвращали undefined, то есть поддомен без точного ресурса просто исчезал из данных и
+  // отчитывался как «нет ресурса в консоли» — при том, что ресурс есть.
+  //
+  // Брать его безопасно: строки страниц синк отфильтрует по хосту. Шире окажутся только
+  // запросы — Google не говорит, на какой поддомен вёл показ, — и это записано в примечании
+  // прогона, а не спрятано.
   const parts = host.split(".");
   if (parts.length > 2) {
     const registrable = `sc-domain:${parts.slice(-2).join(".")}`;
-    if (properties.includes(registrable)) return undefined;
+    if (properties.includes(registrable)) return registrable;
   }
   return undefined;
 }

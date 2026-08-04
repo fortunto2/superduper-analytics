@@ -8,7 +8,7 @@
  */
 import { fetchAgentTraffic, type AgentTraffic } from "./agents";
 import { APPS, SITES } from "./registry.generated";
-import { readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
+import { LAG_DAYS, readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
 import { readTotals, type StoreTotal } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
 
@@ -116,7 +116,7 @@ export async function fetchOverview(
   // «последние 7 дней, считая сегодня» вернул бы три пустых дня и заниженные итоги.
   const searchPromise = (async (): Promise<SearchTotal[]> => {
     if (env.STORES === undefined) return [];
-    const to = dayBefore(utcDay(now), 3);
+    const to = dayBefore(utcDay(now), LAG_DAYS);
     try {
       return await readSearch(env.STORES, "query", dayBefore(to, Math.max(1, days) - 1), to);
     } catch {
@@ -126,7 +126,7 @@ export async function fetchOverview(
 
   const searchDailyPromise = (async () => {
     if (env.STORES === undefined) return [];
-    const to = dayBefore(utcDay(now), 3);
+    const to = dayBefore(utcDay(now), LAG_DAYS);
     try {
       return await readSearchDaily(env.STORES, dayBefore(to, Math.max(1, days) - 1), to);
     } catch {
