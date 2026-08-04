@@ -239,6 +239,9 @@ export function parseCampaigns(payload: unknown): CampaignTotal[] {
 }
 
 /** Одна строка «откуда пришли» или «что читали» — форма у обоих вопросов одна. */
+/** Потолок окна для чужих запросов: не больше того, что вообще хранится. */
+export const RETENTION_DAYS_SAFE = RETENTION_DAYS;
+
 export type Breakdown = { source: string; key: string; page_views: number; engaged: number };
 
 /**

@@ -5,7 +5,7 @@
  * ходит не за «вчера», а за окно, и пишет UPSERT'ом. Взять один вчерашний день значило бы
  * записывать пустоту каждый раз и не заметить этого.
  */
-import { fetchSearchDay, googleToken, searchableSites, type SearchEnv, type SearchRow } from "./console";
+import { fetchSearchDay, googleToken, listProperties, propertyFor, searchableSites, type SearchEnv, type SearchRow } from "./console";
 import { dayBefore, utcDay } from "../stores/schema";
 
 /** Насколько отстаёт консоль. Три дня — с запасом к её обычным двум. */
@@ -44,6 +44,7 @@ export async function syncSearchConsole(
   const days: string[] = [];
   for (let i = 0; i < RESTATE_DAYS; i += 1) days.push(dayBefore(to, i));
 
+  const properties = await listProperties(token);
   const sites = searchableSites();
   const statement = env.STORES.prepare(
     `INSERT INTO search_daily (day, site, kind, key, clicks, impressions, position, fetched)
@@ -55,11 +56,36 @@ export async function syncSearchConsole(
 
   let rows = 0;
   for (const site of sites) {
+    const property = propertyFor(site.url, properties);
+    if (property === undefined) {
+      // Записываем, а не пропускаем молча: «нет ресурса в консоли» и «показов нет» выглядят
+      // одинаково в числах и требуют совершенно разных действий.
+      notes.push(`${site.id}: no Search Console property`);
+      continue;
+    }
+    if (property.startsWith("sc-domain:")) {
+      notes.push(`${site.id}: domain property — query rows include subdomains`);
+    }
+    // Доменный ресурс покрывает ВСЕ поддомены разом. Для страниц это чинится фильтром по
+    // хосту — иначе superduperai.co забирает строки books, live2play и остальных соседей и
+    // выглядит крупнее себя. Для запросов не чинится ничем: Google не говорит, на какой
+    // поддомен вёл показ, и это записано как ограничение, а не спрятано.
+    const host = new URL(site.url).host.toLowerCase();
+    const wide = property.startsWith("sc-domain:");
+    const mine = (row: SearchRow): boolean => {
+      if (!wide || row.kind !== "page") return true;
+      try {
+        return new URL(row.key).host.toLowerCase() === host;
+      } catch {
+        return true;
+      }
+    };
+
     const collected: SearchRow[] = [];
     for (const day of days) {
       for (const kind of ["query", "page"] as const) {
         try {
-          collected.push(...(await fetchSearchDay(token, site.url, site.id, day, kind)));
+          collected.push(...(await fetchSearchDay(token, property, site.id, day, kind)).filter(mine));
         } catch (error) {
           // Один сайт без доступа не должен уносить остальные: ресурс мог быть не подтверждён
           // для сервисного аккаунта, и это факт про настройку, а не сбой джоба.
@@ -117,7 +143,15 @@ export async function readSearch(
   kind: "query" | "page",
   from: string,
   to: string,
+  /**
+   * Один сайт вместо всех. Фильтр обязан быть в SQL, а не после выборки: LIMIT срезает строки
+   * ДО фильтра, и сайт с тысячей строк занимает его целиком. Именно так фид miralinka
+   * возвращал нули при сорока трёх лежащих в базе строках.
+   */
+  site?: string,
 ): Promise<SearchTotal[]> {
+  const where = site === undefined ? "" : " AND site = ?";
+  const binds = site === undefined ? [kind, from, to] : [kind, from, to, site];
   const { results } = await db
     .prepare(
       `SELECT site, kind, key,
@@ -126,12 +160,12 @@ export async function readSearch(
               CASE WHEN SUM(impressions) > 0
                    THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
          FROM search_daily
-        WHERE kind = ? AND day >= ? AND day <= ?
+        WHERE kind = ? AND day >= ? AND day <= ?${where}
      GROUP BY site, kind, key
      ORDER BY impressions DESC
-        LIMIT 60`,
+        LIMIT ${site === undefined ? 60 : 200}`,
     )
-    .bind(kind, from, to)
+    .bind(...binds)
     .all<SearchTotal>();
   return results;
 }

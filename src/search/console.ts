@@ -104,15 +104,15 @@ export async function googleToken(env: SearchEnv, now: number): Promise<string |
  */
 export async function fetchSearchDay(
   token: string,
-  siteUrl: string,
+  property: string,
   siteId: string,
   day: string,
   kind: "query" | "page",
   limit = 25,
 ): Promise<SearchRow[]> {
-  // Домен передаётся как `sc-domain:` или как URL — здесь всегда URL, потому что именно так
-  // ресурсы заведены в консоли у seo-cli, и расхождение дало бы пустой ответ вместо ошибки.
-  const url = `${API}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`;
+  // `property` приходит из listProperties как есть — `https://host/` или `sc-domain:host`.
+  // Строить его из домена нельзя: несуществующий ресурс отвечает пустотой, а не ошибкой.
+  const url = `${API}/${encodeURIComponent(property)}/searchAnalytics/query`;
   const response = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -144,4 +144,53 @@ export async function fetchSearchDay(
 /** Сайты реестра, у которых есть, что спрашивать: живые и с адресом. */
 export function searchableSites(): { id: string; url: string }[] {
   return SITES.filter((s) => !s.retired).map((s) => ({ id: s.id, url: s.url }));
+}
+
+/**
+ * Что вообще заведено в консоли. Спрашивать обязательно, а не строить адрес по домену.
+ *
+ * Ресурсы бывают двух видов: адрес (`https://life2film.com/`) и домен (`sc-domain:miralinka.com`),
+ * и заведены они как попало — часть так, часть эдак, некоторые обоими. Запрос к несуществующему
+ * ресурсу отвечает не ошибкой, а пустотой, поэтому неверная догадка выглядит как «показов нет».
+ * Именно так молча потерялся superduperai с его тремя с половиной сотнями показов.
+ */
+export async function listProperties(token: string): Promise<string[]> {
+  const response = await fetch("https://searchconsole.googleapis.com/webmasters/v3/sites", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return [];
+  const body = await response.json<{ siteEntry?: { siteUrl?: string }[] }>();
+  return (body.siteEntry ?? []).map((e) => e.siteUrl ?? "").filter((u) => u !== "");
+}
+
+/**
+ * Ресурс для нашего сайта, выбранный из существующих.
+ *
+ * Сначала точный адрес — он уже сужен до нужного поддомена. Домен берётся вторым: `sc-domain:`
+ * покрывает ВСЕ поддомены сразу, поэтому для `marafon.miralinka.com` он вернул бы числа вместе
+ * с основным сайтом, и марафон выглядел бы вчетверо крупнее, чем есть.
+ */
+export function propertyFor(siteUrl: string, properties: string[]): string | undefined {
+  const host = new URL(siteUrl).host.toLowerCase();
+  const exact = properties.find((p) => {
+    if (p.startsWith("sc-domain:")) return false;
+    try {
+      return new URL(p).host.toLowerCase() === host;
+    } catch {
+      return false;
+    }
+  });
+  if (exact !== undefined) return exact;
+
+  const domain = `sc-domain:${host}`;
+  if (properties.includes(domain)) return domain;
+
+  // Голый домен для поддомена — только если своего ресурса нет вовсе. Числа будут шире, чем
+  // сайт, и это записано в примечании прогона, а не спрятано.
+  const parts = host.split(".");
+  if (parts.length > 2) {
+    const registrable = `sc-domain:${parts.slice(-2).join(".")}`;
+    if (properties.includes(registrable)) return undefined;
+  }
+  return undefined;
 }

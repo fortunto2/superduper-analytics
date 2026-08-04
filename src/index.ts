@@ -12,6 +12,7 @@
 import { Hono } from "hono";
 import { accessIdentity } from "./access";
 import { deriveAnon } from "./anon";
+import { buildFeed, FEED_CACHE_SECONDS, sourceForKey } from "./feed";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
 import { isRegisteredOrigin } from "./registry";
@@ -192,6 +193,30 @@ app.get("/dashboard", (c) => {
 app.get("/", (c) => c.redirect(`/dashboard${new URL(c.req.url).search}`, 302));
 
 app.get("/health", (c) => c.json({ ok: true, stage: "ingest" }));
+
+/**
+ * Фид по страницам одного сайта — для его собственной админки. См. docs/tz-site-feed.md.
+ *
+ * Вне `/v1/*` намеренно: там Access, и чужой сервер его не пройдёт. Ключ определяет источник,
+ * параметра `source` тут нет вовсе — не «игнорируется», а отсутствует.
+ */
+app.get("/feed", async (c) => {
+  const given = c.req.header("authorization")?.replace(/^Bearer /, "") ?? c.req.query("key");
+  const source = sourceForKey(c.env.FEED_KEYS, given);
+  // 404, а не 401: незачем подтверждать, что по этому адресу вообще что-то есть.
+  if (source === undefined) return c.text("not found", 404);
+
+  const cache = caches.default;
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
+  if (cached !== undefined) return cached;
+
+  const feed = await buildFeed(c.env, source, Number(c.req.query("days") ?? 30), Date.now());
+  const response = c.json(feed);
+  response.headers.set("cache-control", `private, max-age=${FEED_CACHE_SECONDS}`);
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
+});
 
 /**
  * A favicon, so every dashboard load stops logging a 404 against itself. An SVG in the source
