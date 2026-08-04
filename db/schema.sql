@@ -84,3 +84,27 @@ CREATE TABLE IF NOT EXISTS own_daily (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS own_daily_source_day ON own_daily (source, day);
+
+-- Search Console: показы, клики и позиция по запросам и страницам.
+--
+-- Единственный ОПЕРЕЖАЮЩИЙ источник в этом хранилище. Всё остальное отвечает на вопрос «что
+-- уже случилось»; этот — «сколько раз нас показали и не кликнули», то есть где рост.
+--
+-- Отдельная таблица от store_daily и own_daily, потому что у неё своя размерность: не продукт
+-- и метрика, а продукт, запрос и позиция. Впихнуть запрос в колонку `campaign` было бы дёшево
+-- сегодня и необъяснимо через полгода.
+CREATE TABLE IF NOT EXISTS search_daily (
+  day    TEXT NOT NULL,
+  site   TEXT NOT NULL,
+  -- 'query' — по какому запросу показали; 'page' — какую страницу.
+  kind   TEXT NOT NULL,
+  key    TEXT NOT NULL,
+  clicks REAL NOT NULL,
+  impressions REAL NOT NULL,
+  -- Средняя позиция. МЕНЬШЕ — лучше, и это единственная метрика здесь с таким направлением.
+  position REAL NOT NULL,
+  fetched INTEGER NOT NULL,
+  PRIMARY KEY (day, site, kind, key)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS search_daily_site_day ON search_daily (site, day);

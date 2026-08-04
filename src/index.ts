@@ -22,6 +22,7 @@ import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
 import { rollupDay } from "./rollup";
+import { syncSearchConsole } from "./search/sync";
 import { readCampaigns, readTotals } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
 import { syncAppStore } from "./stores/sync";
@@ -362,6 +363,10 @@ app.get("/v1/stores", async (c) => {
  * deliberate act with its output on screen, not a surprise at 05:00.
  */
 /** Свернуть сутки сейчас. `?day=YYYY-MM-DD` — для добора пропущенных дней, пока они живы. */
+app.post("/v1/search/sync", async (c) => {
+  return c.json(await syncSearchConsole(c.env, Date.now()));
+});
+
 app.post("/v1/rollup", async (c) => {
   return c.json(await rollupDay(c.env, Date.now(), c.req.query("day")));
 });
@@ -391,6 +396,11 @@ export default {
         rollupDay(env, now)
           .then((r) => console.log("rollup", JSON.stringify(r)))
           .catch((e: unknown) => console.error("rollup failed", String(e))),
+        // Search Console — единственный опережающий источник здесь: показы и позиции говорят,
+        // где рост, тогда как всё остальное говорит, что уже случилось.
+        syncSearchConsole(env, now)
+          .then((r) => console.log("search sync", JSON.stringify(r)))
+          .catch((e: unknown) => console.error("search sync failed", String(e))),
       ]),
     );
   },
