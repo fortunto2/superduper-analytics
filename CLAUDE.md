@@ -55,6 +55,7 @@ docs/tz-funnel-and-mobile.md  how site→install→purchase is attributed withou
 db/schema.sql        the store-report tables. `make db` applies it
 docs/metrics.md      what the dashboard must show, and where each number comes from
 docs/roadmap.md      the order of work, and who blocks what. Read before starting anything
+docs/tz-site-feed.md how another site's admin reads its own page numbers from here
 ```
 
 Generated, never edited by hand: `src/registry.generated.ts` (committed) and
