@@ -27,6 +27,9 @@
  */
 
 export const CHART_CSS = `
+.tip{position:fixed;max-width:220px;pointer-events:none;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12.5px;
+  box-shadow:0 6px 20px rgba(0,0,0,.14);opacity:0;transition:opacity .12s;z-index:9}
 .chart{position:relative}
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:14px 0 0}
@@ -69,6 +72,28 @@ function sdaSeries(rows){
     if(key===null)return;
     byName[key][r.day]=(byName[key][r.day]||0)+r.events});
   return {days:days,slot:slot,byName:byName,others:rest.length};
+}
+
+/**
+ * Наведение. Один обработчик на обе страницы: подсказка над многорядным графиком обязана
+ * говорить, ЧЕЙ это столбец, и повторять это в двух местах значит однажды починить в одном.
+ */
+function sdaHover(root,tip,esc,fmt){
+  root.addEventListener('mouseover',function(e){
+    var r=e.target.closest('rect[data-d]');if(!r)return;
+    var rowsOf=[];try{rowsOf=JSON.parse(r.dataset.v||'[]')}catch(err){rowsOf=[]}
+    var sum=rowsOf.reduce(function(a,x){return a+x[2]},0);
+    tip.innerHTML='<strong>'+esc(r.dataset.d)+'</strong> \u00b7 '+fmt(sum)+' events<br>'+
+      (rowsOf.length?rowsOf.map(function(x){
+        return '<span class="'+x[0]+'" style="display:inline-flex;align-items:center;gap:5px">'+
+          '<i style="width:8px;height:8px;border-radius:2px;background:var(--c);display:inline-block"></i>'+
+          esc(x[1])+' '+fmt(x[2])+'</span>'}).join('<br>')
+       :'<span class="sub">nothing that day</span>');
+    tip.style.opacity=1});
+  root.addEventListener('mousemove',function(e){
+    tip.style.left=Math.min(e.clientX+14,innerWidth-230)+'px';tip.style.top=(e.clientY+14)+'px'});
+  root.addEventListener('mouseout',function(e){
+    if(e.target.closest('rect[data-d]'))tip.style.opacity=0});
 }
 
 function sdaChart(rows,esc,fmt){

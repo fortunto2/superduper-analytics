@@ -229,7 +229,7 @@ a:hover{text-decoration:underline}
 footer{margin-top:36px;color:var(--muted);font-size:13px}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 </style>
-</head><body><div class="wrap">
+</head><body><div class="tip" id="tip"></div><div class="wrap">
 <h1>Open numbers</h1>
 <p class="lede">Traffic for the products below, published automatically. Nobody types these in
 and nobody can round them up — the page asks the same API the private dashboard does, and the
@@ -305,6 +305,7 @@ fetch('/open.json',{cache:'no-cache'}).then(function(r){return r.json()}).then(f
   if(ch.svg){
     document.getElementById('chart').innerHTML='<div class="chart">'+ch.svg+'</div>'+ch.legend;
     document.getElementById('c').style.display='';
+    sdaHover(document.getElementById('chart'),document.getElementById('tip'),esc,fmt);
   }
   document.getElementById('gen').textContent='Updated '+new Date(d.generated_at).toUTCString()+'.';
 }).catch(function(){document.getElementById('t').textContent='Numbers are temporarily unavailable.'});
