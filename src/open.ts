@@ -9,13 +9,21 @@
  *   2. Nothing here reaches the private aggregate. `/v1/*` stays behind DASHBOARD_KEY; this
  *      endpoint builds its own answer from the published list and never sums across the rest.
  *
- * The numbers are Cloudflare's edge counts, not ours, and the page says so. That is not a
- * placeholder: the edge counts unique visitors before Analytics Engine's sampling can throw
- * rows away, so it is the more honest figure for "how many people" — and it is available for
- * a site the moment it is on Cloudflare, with or without a counter installed.
+ * The numbers are OUR counter's, bot-filtered — and that reverses what this file used to argue.
+ *
+ * The old reasoning was that Cloudflare's edge counts uniques before sampling can drop rows, so
+ * it is the more honest "how many people". Measurement killed it: on life2film the edge reported
+ * twenty thousand uniques over a window in which two people had actually visited. It counts
+ * every scraper, and on sites this size the scrapers are the overwhelming majority. Publishing
+ * that under the word "visitors" on a page whose entire claim is honesty was the worst possible
+ * place to keep the mistake — the private dashboard had already stopped believing it.
+ *
+ * A filtered undercount beats an unfiltered overcount, so: our own numbers, bots excluded,
+ * marked as a lower bound whenever sampling was active. A published site with no counter shows
+ * nothing rather than a number that is mostly robots.
  */
 import { SITES } from "./registry.generated";
-import { fetchZoneTotals, listZones, zoneForHost, type ZonesEnv } from "./zones";
+import { fetchStats, type StatsEnv } from "./stats";
 
 /** How long the numbers may be stale. Nobody refreshes a public metrics page for a live figure. */
 export const OPEN_CACHE_SECONDS = 900;
@@ -36,64 +44,61 @@ export const OPEN_PAGE_CACHE_SECONDS = 300;
  * visitors that are mostly not its own. Neither is acceptable on a page whose entire claim is
  * that the numbers are not massaged. So the domain is the row, and it names what it covers.
  */
-export type OpenDomain = {
-  domain: string;
-  covers: { id: string; url: string }[];
-  visitors: number;
+export type OpenProduct = {
+  id: string;
+  url: string;
+  /** People, bots excluded. A LOWER BOUND when `sampled` — see the note on the page. */
+  people: number;
   page_views: number;
+  /** Page views that saw a scroll, click or keypress. The hardest signal here to fake. */
+  engaged: number;
 };
 
 export type OpenReport = {
   window_days: number;
   generated_at: string;
-  source: "cloudflare-edge";
-  domains: OpenDomain[];
+  /** Which counter produced these. Named so a reader never has to guess whose arithmetic it is. */
+  source: "own-counter";
+  /** True when Analytics Engine dropped rows in this window, which makes `people` a floor. */
+  sampled: boolean;
+  products: OpenProduct[];
 };
 
 export async function buildOpenReport(
-  env: ZonesEnv,
+  env: StatsEnv,
   days: number,
   now: number,
 ): Promise<OpenReport> {
-  const published = SITES.filter((s) => s.open);
+  const published = SITES.filter((s) => s.open && !s.retired);
   const report: OpenReport = {
     window_days: days,
     generated_at: new Date(now).toISOString(),
-    source: "cloudflare-edge",
-    domains: [],
+    source: "own-counter",
+    sampled: false,
+    products: [],
   };
   if (published.length === 0) return report;
 
-  const zones = await listZones(env);
+  const stats = await fetchStats(env, days);
+  if (!stats.ok) return report;
+  report.sampled = stats.stats.sampling_active;
 
-  // Group published sites by the zone that actually measures them.
-  const grouped = new Map<string, { name: string; sites: typeof published }>();
   for (const site of published) {
-    const zone = zoneForHost(site.host, zones);
-    if (zone === undefined) continue;
-    const entry = grouped.get(zone.tag) ?? { name: zone.name, sites: [] };
-    entry.sites.push(site);
-    grouped.set(zone.tag, entry);
-  }
-
-  const totals = await fetchZoneTotals(
-    env,
-    [...grouped].map(([tag, g]) => ({ tag, name: g.name })),
-    days,
-    now,
-  );
-
-  for (const zoneTotals of totals) {
-    const group = [...grouped.values()].find((g) => g.name === zoneTotals.name);
-    if (group === undefined) continue;
-    report.domains.push({
-      domain: zoneTotals.name,
-      covers: group.sites.map((s) => ({ id: s.id, url: s.url })),
-      visitors: zoneTotals.uniques,
-      page_views: zoneTotals.pageViews,
+    // Web only. An app shares the id with its site, and adding an install to a page view would
+    // be the same category error this whole project keeps refusing to make.
+    const rows = stats.stats.sources.filter(
+      (row) => row.source === site.id && row.platform === "web",
+    );
+    if (rows.length === 0) continue;
+    report.products.push({
+      id: site.id,
+      url: site.url,
+      people: rows.reduce((sum, row) => sum + row.people_seen, 0),
+      page_views: rows.reduce((sum, row) => sum + row.page_views, 0),
+      engaged: rows.reduce((sum, row) => sum + row.engaged, 0),
     });
   }
-  report.domains.sort((a, b) => b.visitors - a.visitors);
+  report.products.sort((a, b) => b.page_views - a.page_views);
   return report;
 }
 
@@ -137,19 +142,24 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 </head><body><div class="wrap">
 <h1>Open numbers</h1>
 <p class="lede">Traffic for the products below, published automatically. Nobody types these in
-and nobody can round them up — the page asks the same API the private dashboard does.</p>
+and nobody can round them up — the page asks the same API the private dashboard does, and the
+numbers are small on purpose: they are people, not requests.</p>
 <div class="card"><div id="t">Loading…</div></div>
 
 <div class="method">
   <h2>How these are counted</h2>
   <ul>
-    <li><strong>Visitors and page views come from Cloudflare's edge</strong>, not from a script
-      on the page. That is deliberate: the edge counts before any sampling can drop rows, and it
-      counts a site whether or not a counter is installed on it.</li>
-    <li><strong>A row is a domain, not a product.</strong> Cloudflare measures per domain, and
-      several products can live on one. Where that happens the domain is listed once with
-      everything it covers — splitting the number between them would be invention, and giving
-      it to one of them would be a lie.</li>
+    <li><strong>These are our own counter's numbers, with bots excluded.</strong> This page used
+      to publish Cloudflare's edge counts instead, on the theory that they lose nothing to
+      sampling. They also count every scraper: on one of these domains the edge reported twenty
+      thousand &ldquo;visitors&rdquo; over a window in which two people had actually visited. A
+      filtered undercount beats an unfiltered overcount, especially on a page like this one.</li>
+    <li><strong>People is a floor, not an estimate.</strong> Above a certain rate the store keeps
+      a sample of rows, and a dropped row takes its anonymous id with it — no weighting brings
+      back a value that was never written. Page views and engaged visits stay exact, because
+      those are counts and counts can be weighted.</li>
+    <li><strong>Engaged</strong> means a page view that saw a scroll, a click or a keypress.
+      Loading a page is what a crawler does; interacting with it is what a person does.</li>
     <li>A product appears here only if <code>public: true</code> is set for it in
       <code>registry/sources.yaml</code>. That flag defaults to off, so nothing is published by
       forgetting.</li>
@@ -172,13 +182,16 @@ var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'
 // absorbs the load, so the metered read budget is unaffected.
 fetch('/open.json',{cache:'no-cache'}).then(function(r){return r.json()}).then(function(d){
   var el=document.getElementById('t');
-  if(!d.domains||!d.domains.length){el.textContent='Nothing is published yet.';return}
-  var h='<table><thead><tr><th>Domain</th><th class="n">Visitors</th><th class="n">Page views</th></tr></thead><tbody>';
-  d.domains.forEach(function(z){
-    var covers=z.covers.map(function(c){return '<a href="'+esc(c.url)+'">'+esc(c.id)+'</a>'}).join(', ');
-    h+='<tr><td>'+esc(z.domain)+'<div class="sub">'+covers+'</div></td>'+
-       '<td class="n">'+fmt(z.visitors)+'</td><td class="n">'+fmt(z.page_views)+'</td></tr>'});
-  h+='</tbody></table><p class="sub" style="margin:14px 0 0">Last '+d.window_days+' days.</p>';
+  if(!d.products||!d.products.length){el.textContent='Nothing is published yet.';return}
+  var h='<table><thead><tr><th>Product</th><th class="n">People</th><th class="n">Page views</th>'+
+        '<th class="n">Engaged</th></tr></thead><tbody>';
+  d.products.forEach(function(p){
+    h+='<tr><td><a href="'+esc(p.url)+'">'+esc(p.id)+'</a>'+
+       '<div class="sub">'+esc(p.url.replace(/^https?:\/\//,''))+'</div></td>'+
+       '<td class="n">'+fmt(p.people)+(d.sampled?'<span class="sub">+</span>':'')+'</td>'+
+       '<td class="n">'+fmt(p.page_views)+'</td><td class="n">'+fmt(p.engaged)+'</td></tr>'});
+  h+='</tbody></table><p class="sub" style="margin:14px 0 0">Last '+d.window_days+' days'+
+     (d.sampled?'. \u201c+\u201d marks a lower bound: the store sampled this window.':'.')+'</p>';
   el.innerHTML=h;
   document.getElementById('gen').textContent='Updated '+new Date(d.generated_at).toUTCString()+'.';
 }).catch(function(){document.getElementById('t').textContent='Numbers are temporarily unavailable.'});

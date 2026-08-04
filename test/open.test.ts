@@ -35,29 +35,38 @@ describe("the public routes", () => {
     const res = await SELF.fetch("https://analytics.example/open.json");
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    const body = (await res.json()) as { domains: unknown[]; source: string };
-    expect(body.source).toBe("cloudflare-edge");
-    expect(Array.isArray(body.domains)).toBe(true);
+    const body = (await res.json()) as { products: unknown[]; source: string };
+    // Named, so a reader never has to guess whose arithmetic produced the numbers.
+    expect(body.source).toBe("own-counter");
+    expect(Array.isArray(body.products)).toBe(true);
   });
 
-  it("reports a shared domain once, naming every product on it", async () => {
-    // superduperai and live2play are one Cloudflare zone. Two rows would double-count the
-    // traffic; one row labelled with either product alone would misattribute it.
+  it("publishes a row per PRODUCT, which the edge could never do", async () => {
+    // superduperai and live2play share one Cloudflare zone, so an edge-based page had to
+    // publish the domain and list both under it. Our own counter knows which is which, and
+    // "a row is a product" is what a reader expects from a page called Open numbers.
     const body = (await (await SELF.fetch("https://analytics.example/open.json")).json()) as {
-      domains: { domain: string; covers: { id: string }[] }[];
+      products: { id: string }[];
     };
-    const domains = body.domains.map((d) => d.domain);
-    expect(new Set(domains).size).toBe(domains.length);
-    const shared = body.domains.find((d) => d.domain === "superduperai.co");
-    if (shared !== undefined) {
-      expect(shared.covers.map((c) => c.id).sort()).toEqual(["live2play", "superduperai"]);
-    }
+    const ids = body.products.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Only the three flagged `public: true` may ever appear here.
+    for (const id of ids) expect(["superduperai", "live2play", "life2film"]).toContain(id);
+  });
+
+  it("marks people as a floor whenever the window was sampled", async () => {
+    const body = (await (await SELF.fetch("https://analytics.example/open.json")).json()) as {
+      sampled: boolean;
+    };
+    // The flag must exist either way: a page that silently drops it publishes a lower bound
+    // as if it were a count.
+    expect(typeof body.sampled).toBe("boolean");
   });
 
   it("does not open a back door into the keyed aggregate", async () => {
     // /open must never become a way to read what /v1/* refuses to show.
     expect((await SELF.fetch("https://analytics.example/v1/overview")).status).toBe(401);
-    expect((await SELF.fetch("https://analytics.example/")).status).toBe(404);
+    expect((await SELF.fetch("https://analytics.example/dashboard")).status).toBe(404);
   });
 
   it("never names a private source anywhere in the page", async () => {

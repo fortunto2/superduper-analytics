@@ -62,6 +62,9 @@ h2{font-size:13px;font-weight:600;margin:0 0 14px;letter-spacing:.04em;text-tran
   padding:5px 11px;border-radius:6px;cursor:pointer}
 .range button[aria-pressed=true]{background:var(--plane);color:var(--ink);font-weight:600}
 .range button:hover{color:var(--ink)}
+.links{display:flex;flex-wrap:wrap;gap:16px;margin:-8px 0 22px}
+.links a{color:var(--muted);text-decoration:none;font-size:13px;font-weight:600}
+.links a:hover{color:var(--series)}
 .picker{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
 .chip{display:inline-block;padding:5px 12px;border:1px solid var(--border);border-radius:20px;
   font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;background:var(--surface)}
@@ -101,6 +104,13 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
       <button data-d="30">30d</button><button data-d="90">90d</button>
     </div>
   </header>
+  <!-- Остальные входы в те же данные. Без этого о них помнит только тот, кто их написал:
+       открытая страница и MCP не видны ниоткуда, и через месяц о них не вспомнит никто. -->
+  <nav class="links">
+    <a href="/open" target="_blank" rel="noopener">Open page &#8599;</a>
+    <a href="/mcp" id="mcp" target="_blank" rel="noopener">MCP endpoint &#8599;</a>
+    <a href="https://github.com/fortunto2/superduper-analytics" target="_blank" rel="noopener">Source &#8599;</a>
+  </nav>
   <div id="app"><p class="empty">Loading…</p></div>
   <footer>
     Everything on the left is ours, counted weighted by <code>_sample_interval</code>, with
@@ -362,6 +372,15 @@ function load(){
       '</strong><br>'+esc(x.j.message||'')+'</div>'})
     .catch(function(){app.innerHTML='<p class="empty">Could not reach the API.</p>'})
 }
+// MCP отвечает только на POST — открывать его в браузере бессмысленно. Ссылка нужна как
+// НАПОМИНАНИЕ и как способ скопировать адрес, поэтому клик копирует, а не переходит.
+document.getElementById('mcp').addEventListener('click',function(e){
+  e.preventDefault();
+  var url=location.origin+'/mcp';
+  var done=function(){var a=e.target;var t=a.textContent;a.textContent='Copied '+url;
+    setTimeout(function(){a.textContent=t},2000)};
+  if(navigator.clipboard) navigator.clipboard.writeText(url).then(done,done); else done()
+});
 document.querySelector('.range').addEventListener('click',function(e){
   var b=e.target.closest('button');if(!b)return;days=+b.dataset.d;load()});
 load();
