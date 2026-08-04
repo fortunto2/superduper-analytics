@@ -18,12 +18,20 @@
  * that under the word "visitors" on a page whose entire claim is honesty was the worst possible
  * place to keep the mistake — the private dashboard had already stopped believing it.
  *
+ * NO BACKSLASHES IN THE PAGE STRING. It is a template literal, so `\/` collapses to `/` before
+ * a browser ever sees it: a regex written here as /^https?:<backslash>/<backslash>// shipped as
+ * /^https?:/// and took the whole page down with "missing ) after argument list". The same rule
+ * is written at the top of snippet.ts, and it applies to every string in this repository that
+ * is JavaScript for a browser. Use string methods here, not regexes.
+ *
  * A filtered undercount beats an unfiltered overcount, so: our own numbers, bots excluded,
  * marked as a lower bound whenever sampling was active. A published site with no counter shows
  * nothing rather than a number that is mostly robots.
  */
 import { SITES } from "./registry.generated";
 import { fetchStats, type StatsEnv } from "./stats";
+import { fetchAgentTraffic, type AgentTraffic } from "./agents";
+import { listZones, zoneForHost, type ZonesEnv } from "./zones";
 
 /** How long the numbers may be stale. Nobody refreshes a public metrics page for a live figure. */
 export const OPEN_CACHE_SECONDS = 900;
@@ -52,6 +60,29 @@ export type OpenProduct = {
   page_views: number;
   /** Page views that saw a scroll, click or keypress. The hardest signal here to fake. */
   engaged: number;
+  /**
+   * Verified AI agents on THIS product's hostname over the last 24 hours — a different window
+   * from the columns beside it, and the page says so.
+   *
+   * Per product, not per zone. Six properties share the superduperai.co zone, so the zone total
+   * cannot be attributed to any one of them; the hostname can, and Cloudflare reports it.
+   */
+  ai_requests: number;
+};
+
+/**
+ * AI agents, portfolio-wide and deliberately NOT per product.
+ *
+ * Cloudflare reports verified bots per zone, and a zone here holds several products — most of
+ * them not published. Splitting a zone's agent traffic between products would be invention;
+ * naming the zone would publish, by implication, that unpublished products live on it. One
+ * total plus who the agents were says the interesting thing and attributes nothing.
+ */
+export type OpenAgents = {
+  requests: number;
+  /** 24, and stated rather than assumed: it is a different window from the table above. */
+  window_hours: number;
+  agents: { agent: string; operator: string; requests: number }[];
 };
 
 export type OpenReport = {
@@ -62,10 +93,12 @@ export type OpenReport = {
   /** True when Analytics Engine dropped rows in this window, which makes `people` a floor. */
   sampled: boolean;
   products: OpenProduct[];
+  /** Absent when Cloudflare could not be read — the page then simply omits the block. */
+  ai_agents?: OpenAgents;
 };
 
 export async function buildOpenReport(
-  env: StatsEnv,
+  env: StatsEnv & ZonesEnv,
   days: number,
   now: number,
 ): Promise<OpenReport> {
@@ -96,9 +129,56 @@ export async function buildOpenReport(
       people: rows.reduce((sum, row) => sum + row.people_seen, 0),
       page_views: rows.reduce((sum, row) => sum + row.page_views, 0),
       engaged: rows.reduce((sum, row) => sum + row.engaged, 0),
+      ai_requests: 0,
     });
   }
   report.products.sort((a, b) => b.page_views - a.page_views);
+
+  // Best-effort, like everywhere else Cloudflare is involved: a public page that shows nothing
+  // because somebody else's GraphQL hiccuped is worse than one missing a block.
+  try {
+    const zones = await listZones(env);
+    const ours = zones.filter((zone) =>
+      SITES.some((site) => !site.retired && zoneForHost(site.host, zones)?.tag === zone.tag),
+    );
+    const perZone = (
+      await Promise.all(ours.map((zone) => fetchAgentTraffic(env, zone, now).catch(() => undefined)))
+    ).filter((z): z is AgentTraffic => z !== undefined);
+
+    const byAgent = new Map<string, { agent: string; operator: string; requests: number }>();
+    let requests = 0;
+    for (const zone of perZone) {
+      requests += zone.ai_requests;
+      for (const a of zone.agents) {
+        const found = byAgent.get(a.agent);
+        if (found === undefined) {
+          byAgent.set(a.agent, { agent: a.agent, operator: a.operator, requests: a.requests });
+        } else {
+          found.requests += a.requests;
+        }
+      }
+    }
+    // Каждому опубликованному продукту — его собственный хост. Зона тут ни при чём.
+    const byHost = new Map<string, number>();
+    for (const zone of perZone) {
+      for (const h of zone.by_host) byHost.set(h.host, (byHost.get(h.host) ?? 0) + h.requests);
+    }
+    for (const product of report.products) {
+      const site = SITES.find((x) => x.id === product.id);
+      if (site !== undefined) product.ai_requests = byHost.get(site.host.toLowerCase()) ?? 0;
+    }
+
+    if (requests > 0) {
+      report.ai_agents = {
+        requests,
+        window_hours: 24,
+        agents: [...byAgent.values()].sort((a, b) => b.requests - a.requests).slice(0, 12),
+      };
+    }
+  } catch {
+    // no block rather than a wrong one
+  }
+
   return report;
 }
 
@@ -160,6 +240,11 @@ numbers are small on purpose: they are people, not requests.</p>
       those are counts and counts can be weighted.</li>
     <li><strong>Engaged</strong> means a page view that saw a scroll, a click or a keypress.
       Loading a page is what a crawler does; interacting with it is what a person does.</li>
+    <li><strong>AI agents are counted per hostname, and verified by Cloudflare</strong> against
+      each operator's own IP ranges — a script cannot appear there by calling itself ClaudeBot.
+      They never reach the counter that produced the other columns: agents do not run JavaScript.
+      The list below the table covers every site we run, not only the published ones, which is
+      why it is larger than the column adds up to.</li>
     <li>A product appears here only if <code>public: true</code> is set for it in
       <code>registry/sources.yaml</code>. That flag defaults to off, so nothing is published by
       forgetting.</li>
@@ -184,14 +269,21 @@ fetch('/open.json',{cache:'no-cache'}).then(function(r){return r.json()}).then(f
   var el=document.getElementById('t');
   if(!d.products||!d.products.length){el.textContent='Nothing is published yet.';return}
   var h='<table><thead><tr><th>Product</th><th class="n">People</th><th class="n">Page views</th>'+
-        '<th class="n">Engaged</th></tr></thead><tbody>';
+        '<th class="n">Engaged</th><th class="n">AI agents</th></tr></thead><tbody>';
   d.products.forEach(function(p){
     h+='<tr><td><a href="'+esc(p.url)+'">'+esc(p.id)+'</a>'+
-       '<div class="sub">'+esc(p.url.replace(/^https?:\/\//,''))+'</div></td>'+
+       '<div class="sub">'+esc(p.url.split('//').pop())+'</div></td>'+
        '<td class="n">'+fmt(p.people)+(d.sampled?'<span class="sub">+</span>':'')+'</td>'+
-       '<td class="n">'+fmt(p.page_views)+'</td><td class="n">'+fmt(p.engaged)+'</td></tr>'});
-  h+='</tbody></table><p class="sub" style="margin:14px 0 0">Last '+d.window_days+' days'+
-     (d.sampled?'. \u201c+\u201d marks a lower bound: the store sampled this window.':'.')+'</p>';
+       '<td class="n">'+fmt(p.page_views)+'</td><td class="n">'+fmt(p.engaged)+'</td>'+
+       '<td class="n">'+fmt(p.ai_requests||0)+'</td></tr>'});
+  h+='</tbody></table><p class="sub" style="margin:14px 0 0">People, page views and engaged: last '+
+     d.window_days+' days'+(d.sampled?'; \u201c+\u201d marks a lower bound, the store sampled this window':'')+
+     '. AI agents: last 24 hours, the widest window this dataset allows.</p>';
+  if(d.ai_agents&&d.ai_agents.agents.length){
+    h+='<p class="sub" style="margin:18px 0 6px">Who they were, across every site we run \u2014 '+
+       fmt(d.ai_agents.requests)+' requests in 24 hours:</p><p class="sub">'+
+       d.ai_agents.agents.map(function(a){return esc(a.agent)+' ('+fmt(a.requests)+')'}).join(', ')+'</p>';
+  }
   el.innerHTML=h;
   document.getElementById('gen').textContent='Updated '+new Date(d.generated_at).toUTCString()+'.';
 }).catch(function(){document.getElementById('t').textContent='Numbers are temporarily unavailable.'});

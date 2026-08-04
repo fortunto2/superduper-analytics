@@ -344,7 +344,8 @@ function render(o){
   if(!rows.length) h+='<p class="empty">No events in this window.</p>';
   else{
     h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People</th>'+
-       '<th class="n">Page views</th><th class="n">Engaged</th><th class="n">Bot events</th></tr></thead><tbody>';
+       '<th class="n">Page views</th><th class="n">Engaged</th><th class="n">Bot events</th>'+
+       '<th class="n">AI agents, 24h</th></tr></thead><tbody>';
     // Источники приходят уже сгруппированными по домену. Показываем домен один раз на
     // группу: повторять его в каждой строке — шум, а не структура.
     var lastDomain=null;
@@ -359,10 +360,16 @@ function render(o){
         '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td>'+
         '<td class="n">'+fmt(r.page_views)+'</td>'+
         '<td class="n">'+fmt(r.engaged)+'</td>'+
-        '<td class="n"'+(mostly?' style="color:var(--warn)"':'')+'>'+fmt(r.bot_events)+'</td></tr>'});
+        '<td class="n"'+(mostly?' style="color:var(--warn)"':'')+'>'+fmt(r.bot_events)+'</td>'+
+        // Прочерк, а не ноль: у приложения нет хоста, и «0 агентов» читалось бы как факт,
+        // хотя это отсутствие вопроса.
+        '<td class="n">'+(r.ai_requests===undefined?'\u2014':fmt(r.ai_requests))+'</td></tr>'});
     h+='</tbody></table>';
     if(st.sources.some(function(r){return r.max_sample>1}))
       h+='<p class="sub" style="margin:10px 0 0">“+” marks a lower bound: sampling dropped rows in that group.</p>';
+    h+='<p class="sub" style="margin:6px 0 0">The agent column is a different window \u2014 24 '+
+      'hours, the widest this dataset allows on the free plan \u2014 and it is per HOSTNAME, '+
+      'which is how products sharing one Cloudflare zone get told apart.</p>';
   }
   h+='</div>';
   app.innerHTML=h;

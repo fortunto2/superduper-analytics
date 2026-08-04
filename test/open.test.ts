@@ -88,3 +88,22 @@ describe("the page itself", () => {
     expect(OPEN_PAGE).not.toMatch(/googletagmanager|gtag/);
   });
 });
+
+describe("the page's own script", () => {
+  /** Everything between the last <script> and </script> — what the browser actually parses. */
+  const inlineScript = (html: string) =>
+    html.slice(html.lastIndexOf("<script>") + 8, html.lastIndexOf("</script>"));
+
+  it("parses — it is a string, so nothing else would catch a typo", () => {
+    // This test exists because a regex written as /^https?:\/\// inside the template literal
+    // shipped as /^https?:/// — the backslashes collapse before a browser sees them — and took
+    // the whole public page down with "missing ) after argument list". Nothing caught it: the
+    // types were fine, the tests were fine, and the page 200s while rendering nothing.
+    expect(() => new Function(inlineScript(OPEN_PAGE))).not.toThrow();
+  });
+
+  it("contains no backslashes at all, which is the only rule that makes that safe", () => {
+    // Cheaper and stricter than reasoning about which escapes survive: forbid them outright.
+    expect(inlineScript(OPEN_PAGE)).not.toContain("\\");
+  });
+});

@@ -11,6 +11,8 @@
 import { RETENTION_DAYS } from "./schema";
 
 export type SourceTotal = {
+  /** Проверенные ИИ-агенты на хосте этого продукта за сутки. Заполняется в overview.ts. */
+  ai_requests?: number;
   source: string;
   platform: string;
   /** Everything, humans and bots together. */

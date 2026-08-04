@@ -159,8 +159,27 @@ export async function fetchOverview(
   // рядом, а не разлетались по таблице по числу событий. У приложений хоста нет — им
   // достаётся домен одноимённого сайта, если он есть, иначе собственный id.
   const hostOf = new Map<string, string>(SITES.map(s => [s.id, domainFamily(s.host)]));
+
+  // Агенты — по продукту, а не по зоне. Шесть продуктов делят зону superduperai.co, но у
+  // каждого свой поддомен, и Cloudflare их различает, хотя зона — нет. Пока это не было
+  // запрошено, число агентов приходилось показывать на всю зону сразу, то есть приписывать
+  // одному продукту чтение всех соседних.
+  const aiByHost = new Map<string, number>();
+  for (const zone of edgeResult?.agents ?? []) {
+    for (const h of zone.by_host) {
+      aiByHost.set(h.host, (aiByHost.get(h.host) ?? 0) + h.requests);
+    }
+  }
+  const fullHost = new Map<string, string>(SITES.map(s => [s.id, s.host.toLowerCase()]));
+
   stats.stats.sources = stats.stats.sources
-    .map(row => ({ ...row, domain: hostOf.get(row.source) ?? row.source }))
+    .map(row => ({
+      ...row,
+      domain: hostOf.get(row.source) ?? row.source,
+      // Только у веба: у приложения нет хоста, и приписать ему чтение сайта было бы выдумкой.
+      ai_requests:
+        row.platform === "web" ? (aiByHost.get(fullHost.get(row.source) ?? "") ?? 0) : undefined,
+    }))
     .sort(
       (a, b) =>
         a.domain.localeCompare(b.domain) ||

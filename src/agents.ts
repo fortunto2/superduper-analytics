@@ -53,6 +53,12 @@ export type AgentTraffic = {
   agents: { agent: string; operator: string; category: string; requests: number }[];
   /** What the AI crawlers actually read, most-read first. */
   ai_paths: { path: string; requests: number }[];
+  /**
+   * Requests per hostname — which is what makes agents a PER-PRODUCT number instead of a
+   * per-zone one. Six products share the superduperai.co zone, but each sits on its own
+   * subdomain, so Cloudflare can tell them apart even though the zone cannot.
+   */
+  by_host: { host: string; requests: number }[];
 };
 
 /**
@@ -83,6 +89,9 @@ const QUERY = `query($zone:String!,$since:Time!,$until:Time!,$ai:[string!]){view
   }
   aiPaths: httpRequestsAdaptiveGroups(limit:12,filter:{datetime_geq:$since,datetime_leq:$until,verifiedBotCategory_in:$ai},orderBy:[count_DESC]){
     count dimensions{clientRequestPath}
+  }
+  byHost: httpRequestsAdaptiveGroups(limit:30,filter:{datetime_geq:$since,datetime_leq:$until,verifiedBotCategory_in:$ai},orderBy:[count_DESC]){
+    count dimensions{clientRequestHTTPHost}
   }
 }}}`;
 
@@ -116,7 +125,7 @@ export async function fetchAgentTraffic(
 
   const reply = (await response.json()) as {
     errors?: unknown[];
-    data?: { viewer?: { zones?: { byCategory?: Group[]; agents?: Group[]; aiPaths?: Group[] }[] } };
+    data?: { viewer?: { zones?: { byCategory?: Group[]; agents?: Group[]; aiPaths?: Group[]; byHost?: Group[] }[] } };
   };
   if (Array.isArray(reply.errors) && reply.errors.length > 0) return undefined;
 
@@ -156,5 +165,9 @@ export async function fetchAgentTraffic(
       path: g.dimensions?.clientRequestPath ?? "",
       requests: g.count ?? 0,
     })),
+    by_host: (node.byHost ?? [])
+      .map((g) => ({ host: (g.dimensions?.clientRequestHTTPHost ?? "").toLowerCase(), requests: g.count ?? 0 }))
+      .filter((h) => h.host !== "")
+      .sort((a, b) => b.requests - a.requests),
   };
 }
