@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import { deriveAnon } from "./anon";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
+import { isRegisteredOrigin } from "./registry";
 import { buildOpenReport, OPEN_CACHE_SECONDS, OPEN_PAGE, OPEN_PAGE_CACHE_SECONDS } from "./open";
 import { handleMcp } from "./mcp";
 import { fetchOverview } from "./overview";
@@ -38,6 +39,17 @@ type Bindings = Env;
  * real ceiling is the platform's request limit — this only stops the cheap, honest mistakes.
  */
 const MAX_BODY_BYTES = 1_000_000;
+
+/**
+ * Is this one of us? `INTERNAL_IPS` is a comma-separated secret — home, office, phone tether.
+ *
+ * An exact match only, no ranges: a CIDR parser is more code than this whole feature deserves,
+ * and a too-wide range silently deletes real visitors, which is worse than counting yourself.
+ */
+export function isInternal(list: string | undefined, ip: string | undefined): boolean {
+  if (list === undefined || list === "" || ip === undefined) return false;
+  return list.split(",").some((entry) => entry.trim() === ip);
+}
 
 /** A week is the question that gets asked; anything else is an explicit `?days=`. */
 const DEFAULT_WINDOW_DAYS = 7;
@@ -199,6 +211,20 @@ app.post("/e", async (c) => {
   const now = Date.now();
   const userAgent = c.req.header("user-agent");
 
+  // Our own visits. Every counter has this problem and most solve it with a localStorage flag,
+  // which is precisely the thing this project promises on every privacy page it is not doing.
+  // So it is decided at the edge instead, from a secret that never enters the public repo.
+  //
+  // Dropped, not marked: a marked event costs a blob slot and a WHERE clause in every query
+  // written from now until the end of the project, to hide rows nobody ever wants to see.
+  // The failure mode is honest — if the list is wrong, your own visits keep showing up.
+  //
+  // 204 all the same. The browser must not learn whether it was counted, and a beacon has
+  // nothing useful to do with the answer.
+  if (isInternal(c.env.INTERNAL_IPS, c.req.header("cf-connecting-ip"))) {
+    return c.body(null, 204);
+  }
+
   const result = ingest(body, {
     now,
     // cf.country is absent in local dev; the header is the same edge-controlled fact and makes
@@ -211,7 +237,12 @@ app.post("/e", async (c) => {
 
   if (!result.ok) return c.json(result.body, result.status);
 
-  writeEvents(c.env.EVENTS, result.events);
+  // Not a visitor: a preview deploy, a dev server, or the tag pasted somewhere it does not
+  // belong. Checked AFTER validation so a misconfigured site still gets a real error about a
+  // real mistake instead of a silent 204 that hides both.
+  const origin = c.req.header("origin");
+  const counted = result.events.filter((e) => isRegisteredOrigin(e.source, origin));
+  if (counted.length > 0) writeEvents(c.env.EVENTS, counted);
 
   // Nothing useful to say, and it keeps the beacon cheap.
   return c.body(null, 204);

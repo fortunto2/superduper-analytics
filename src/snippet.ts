@@ -38,6 +38,12 @@
  * folds into an existing one and `page_engaged` is just an event name, and event names were
  * left open for exactly this.
  *
+ * IT DOES NOT DECIDE WHETHER IT COUNTS. Development traffic and preview deploys are dropped at
+ * the edge, not here: the beacon is a cross-origin POST, so the browser attaches `Origin` for
+ * free, and the registry already knows which host each source lives on. Doing it in the browser
+ * would cost every visitor bytes to carry a list that the server has anyway — and would only
+ * catch the hostnames somebody remembered to name.
+ *
  * IT CARRIES THE CAMPAIGN, NOT THE QUERY STRING. Three utm tags are read by name at load and
  * kept in a variable for the life of the page — including across SPA routes, where the tags are
  * gone from the URL but the visit is still the same arrival. Nothing is stored: no cookie, no

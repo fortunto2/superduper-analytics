@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { SOURCE_IDS } from "../src/registry.generated";
-import { isKnownSource } from "../src/registry";
+import { isKnownSource, isRegisteredOrigin } from "../src/registry";
 import { SourceId } from "../src/schema";
 
 describe("isKnownSource", () => {
@@ -36,5 +36,42 @@ describe("the generated list", () => {
 
   it("is sorted and free of duplicates, so regenerating it produces no diff noise", () => {
     expect([...SOURCE_IDS]).toEqual([...new Set(SOURCE_IDS)].sort());
+  });
+});
+
+describe("counting only what came from where the site actually lives", () => {
+  it("accepts the registered host", () => {
+    expect(isRegisteredOrigin("carettafriends", "https://app.carettafriends.com")).toBe(true);
+  });
+
+  it("rejects a preview deploy and a dev server — the traffic that is us, not visitors", () => {
+    expect(isRegisteredOrigin("carettafriends", "https://abc123.caretta-app-site.pages.dev")).toBe(false);
+    expect(isRegisteredOrigin("carettafriends", "http://localhost:4321")).toBe(false);
+    expect(isRegisteredOrigin("carettafriends", "https://caretta.vercel.app")).toBe(false);
+  });
+
+  it("rejects the tag pasted on somebody else's site", () => {
+    expect(isRegisteredOrigin("carettafriends", "https://not-ours.example")).toBe(false);
+  });
+
+  it("treats www and the bare host as the same place", () => {
+    expect(isRegisteredOrigin("miralinka", "https://www.miralinka.com")).toBe(true);
+  });
+
+  it("fails OPEN when there is nothing to check against", () => {
+    // No Origin at all — a mobile app flush, or a browser mode that withholds it.
+    expect(isRegisteredOrigin("carettafriends", undefined)).toBe(true);
+    expect(isRegisteredOrigin("carettafriends", "null")).toBe(true);
+    // An app-only source has no registered site, so there is no host to compare.
+    expect(isRegisteredOrigin("photosweep", "https://anywhere.example")).toBe(true);
+    // Garbage in the header must not delete a real visit.
+    expect(isRegisteredOrigin("carettafriends", "not a url")).toBe(true);
+  });
+
+  it("counts the default port as the same place and any other as a dev server", () => {
+    // :443 on https is the site itself — URL drops it, and so should we.
+    expect(isRegisteredOrigin("miralinka", "https://miralinka.com:443")).toBe(true);
+    // A port somebody is serving a build on is not the site, even on the right hostname.
+    expect(isRegisteredOrigin("miralinka", "http://miralinka.com:8080")).toBe(false);
   });
 });

@@ -27,6 +27,12 @@ ASC_ISSUER_ID=placeholder
 ASC_VENDOR_NUMBER=placeholder
 ASC_PRIVATE_KEY=placeholder
 
+# Our own visits, dropped at the edge. Comma-separated, exact IPs — home, office, phone.
+# A secret rather than a repo file: the repo is public and these are personal addresses.
+#   pnpm wrangler secret put INTERNAL_IPS
+# Find yours with: curl -s https://cloudflare.com/cdn-cgi/trace | grep '^ip='
+INTERNAL_IPS=203.0.113.7,198.51.100.22
+
 # Salt for the per-day anonymous id. Any long random string; rotating it resets all anon ids,
 # which is a feature — it is the panic button if one ever needs to stop being derivable.
 #   openssl rand -hex 32
