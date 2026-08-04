@@ -263,6 +263,28 @@ function render(o){
   // Кампании: единственное место, где наша половина воронки сходится с чужой. Панель рисуется
   // только когда метка вообще встречалась — пустая таблица «кампаний нет» ничего не сообщает
   // тому, кто ни одной ещё не запускал, и просто занимает первый экран.
+  // Что сказали сами магазины. Отдельной таблицей и НИКОГДА не в сумме с нашими числами:
+  // «люди на лендинге» и «установки» считают разные стороны с разным определением суток.
+  // Отношение между ними — воронка, сумма — бессмыслица.
+  var stores=(o.stores||[]).filter(function(r){return !cur||r.source===cur});
+  if(stores.length){
+    var byMetric={},prods={};
+    stores.forEach(function(r){ byMetric[r.metric]=1; (prods[r.source]=prods[r.source]||{})[r.metric]=r.value });
+    var cols=['installs','redownloads','updates','proceeds_usd','units'].filter(function(m){return byMetric[m]});
+    Object.keys(byMetric).forEach(function(m){ if(cols.indexOf(m)<0) cols.push(m) });
+    h+='<div class="card"><h2>What the stores report</h2><table><thead><tr><th>Product</th>'+
+      cols.map(function(m){return '<th class="n">'+esc(m.replace(/_/g,' '))+'</th>'}).join('')+
+      '</tr></thead><tbody>';
+    Object.keys(prods).sort().forEach(function(p){
+      h+='<tr><td class="name">'+esc(p)+'</td>'+cols.map(function(m){
+        var v=prods[p][m];
+        return '<td class="n">'+(v===undefined?'\u2014':fmt(Math.round(v*100)/100))+'</td>'}).join('')+'</tr>'});
+    h+='</tbody></table><p class="sub" style="margin:14px 0 0">Apple\u2019s own daily totals, '+
+      'exact and never sampled \u2014 which is why they live in a separate store and are never '+
+      'added to the numbers above. Those count visits to a website; these count installs. The '+
+      'ratio between them is the funnel; the sum is nothing.</p></div>';
+  }
+
   var camps=(st.campaigns||[]).filter(function(c){return !cur||c.source===cur});
   if(camps.length){
     h+='<div class="card"><h2>Campaigns</h2>'+

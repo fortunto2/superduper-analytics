@@ -8,6 +8,11 @@
  */
 import { fetchAgentTraffic, type AgentTraffic } from "./agents";
 import { SITES } from "./registry.generated";
+import { readTotals, type StoreTotal } from "./stores/db";
+import { dayBefore, utcDay } from "./stores/schema";
+
+/** Сайты, на которые счётчик в принципе можно поставить. */
+const LIVE_SITES = SITES.filter((s) => !s.retired);
 import { fetchStats, type Stats, type StatsEnv } from "./stats";
 import { fetchZoneTotals, listZones, zoneForHost, type ZonesEnv } from "./zones";
 
@@ -44,9 +49,15 @@ export type Overview = {
    *  where there is one. */
   sites_total: number;
   sites_reporting: number;
+  /**
+   * Что о нас сообщили сами магазины: установки, переустановки, деньги. Отдельным полем, а не
+   * подмешано к нашим числам, потому что складывать их нельзя — это разные счётчики с разным
+   * определением суток. Пусто, пока ключ App Store Connect не умеет читать отчёты.
+   */
+  stores?: StoreTotal[];
 };
 
-export type OverviewEnv = StatsEnv & ZonesEnv;
+export type OverviewEnv = StatsEnv & ZonesEnv & { STORES?: D1Database };
 
 export async function fetchOverview(
   env: OverviewEnv,
@@ -55,6 +66,18 @@ export async function fetchOverview(
 ): Promise<{ ok: true; overview: Overview } | { ok: false; status: number; body: unknown }> {
   const stats = await fetchStats(env, days);
   if (!stats.ok) return stats;
+
+  // Как и край: лучший из возможных. Магазины — приятное дополнение к нашим числам, и падение
+  // D1 не должно уносить с собой весь дашборд.
+  let stores: StoreTotal[] = [];
+  if (env.STORES !== undefined) {
+    const to = dayBefore(utcDay(now), 1);
+    try {
+      stores = await readTotals(env.STORES, dayBefore(to, Math.max(1, days) - 1), to);
+    } catch {
+      stores = [];
+    }
+  }
 
   // The edge side is best-effort: a dashboard that shows nothing because Cloudflare's GraphQL
   // hiccuped is worse than one that shows our own numbers and admits the other half is missing.
@@ -134,8 +157,12 @@ export async function fetchOverview(
       coverage,
       agents,
       edge_available: edgeAvailable,
-      sites_total: SITES.length,
-      sites_reporting: SITES.filter((s) => reporting.has(s.id)).length,
+      // Выключенные сайты не считаются: цель, которой нельзя достичь, делает всю дробь
+      // бессмысленной — «9 из 14» звучит как недоделанная работа, хотя четырнадцатый
+      // выключен навсегда и счётчику там негде стоять.
+      sites_total: LIVE_SITES.length,
+      sites_reporting: LIVE_SITES.filter((s) => reporting.has(s.id)).length,
+      stores,
     },
   };
 }

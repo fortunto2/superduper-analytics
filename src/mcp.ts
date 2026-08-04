@@ -202,12 +202,18 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             : [],
         );
         const lines = [
-          `${SOURCE_IDS.length} registered sources — ${SITES.length} sites, ` +
+          `${SOURCE_IDS.length} registered sources — ${SITES.length} sites ` +
+            `(${SITES.filter(s => s.retired).length} retired), ` +
             `${SOURCE_IDS.length - SITES.length} app-only.`,
           "",
-          ...SITES.map(
-            s => `- ${s.id} — ${s.url} — counter ${reporting.has(s.id) ? "reporting" : "NOT INSTALLED"}`,
-          ),
+          ...SITES.map(s => {
+            // A retired site says so instead of "NOT INSTALLED": the second reads as a task
+            // somebody forgot, and a reader who acts on it goes looking for a dead repository.
+            const state = s.retired
+              ? "RETIRED — switched off, kept for the history under this id"
+              : `counter ${reporting.has(s.id) ? "reporting" : "NOT INSTALLED"}`;
+            return `- ${s.id} — ${s.url} — ${state}`;
+          }),
           "",
           "App-only sources (iOS, reporting through the Swift snippet when it ships):",
           ...SOURCE_IDS.filter(id => !SITES.some(s => s.id === id)).map(id => `- ${id}`),

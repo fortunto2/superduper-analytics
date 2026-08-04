@@ -4,7 +4,7 @@
  * behaves, and that the real ids the products use are actually in it.
  */
 import { describe, expect, it } from "vitest";
-import { SOURCE_IDS } from "../src/registry.generated";
+import { SOURCE_IDS, SITES } from "../src/registry.generated";
 import { isKnownSource, isRegisteredOrigin } from "../src/registry";
 import { SourceId } from "../src/schema";
 
@@ -73,5 +73,20 @@ describe("counting only what came from where the site actually lives", () => {
     expect(isRegisteredOrigin("miralinka", "https://miralinka.com:443")).toBe(true);
     // A port somebody is serving a build on is not the site, even on the right hostname.
     expect(isRegisteredOrigin("miralinka", "http://miralinka.com:8080")).toBe(false);
+  });
+});
+
+describe("a site that was switched off", () => {
+  it("stays in the registry, because the id labels history that still exists", () => {
+    // Deleting the row would make "what was editor?" unanswerable everywhere at once.
+    expect(SOURCE_IDS).toContain("editor");
+    expect(isKnownSource("editor")).toBe(true);
+  });
+
+  it("is marked retired, so coverage stops counting a target nobody can reach", () => {
+    const editor = SITES.find((s) => s.id === "editor");
+    expect(editor?.retired).toBe(true);
+    // Everything else must stay live — a stray flag here silently shrinks the denominator.
+    expect(SITES.filter((s) => s.retired).map((s) => s.id)).toEqual(["editor"]);
   });
 });

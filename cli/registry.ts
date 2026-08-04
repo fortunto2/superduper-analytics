@@ -21,6 +21,14 @@ const Publishable = { public: z.boolean().default(false) };
 const Site = z.object({
   id: SourceId,
   url: z.url(),
+  /**
+   * The site is switched off. It stays in the registry rather than being deleted, because the
+   * id partitions the archive: delete the row and the history it labels becomes unanswerable —
+   * "what was `editor`?" has no answer anywhere. Retired sources are excluded from coverage,
+   * which otherwise counts a target that can never be reached and quietly makes the whole
+   * fraction ignorable.
+   */
+  retired: z.boolean().default(false),
   ...Publishable,
 });
 
@@ -96,13 +104,14 @@ export function checkRegistry(registry: RegistryFile): string[] {
 /** Sites with their hostname, so the Worker can line a site up against its Cloudflare zone. */
 export function sitesOf(
   registry: RegistryFile,
-): { id: string; host: string; url: string; open: boolean }[] {
+): { id: string; host: string; url: string; open: boolean; retired: boolean }[] {
   return registry.sites
     .map((site) => ({
       id: site.id,
       host: new URL(site.url).host,
       url: site.url,
       open: site.public,
+      retired: site.retired,
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -140,7 +149,8 @@ export function renderGenerated(registry: RegistryFile): string {
     .map(
       (s) =>
         `  { id: ${JSON.stringify(s.id)}, host: ${JSON.stringify(s.host)}, ` +
-        `url: ${JSON.stringify(s.url)}, open: ${String(s.open)} },`,
+        `url: ${JSON.stringify(s.url)}, open: ${String(s.open)}, ` +
+        `retired: ${String(s.retired)} },`,
     )
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT.

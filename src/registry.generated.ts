@@ -33,20 +33,20 @@ export const SOURCE_IDS = [
 
 /** Sites only, with the hostname used to match a site against its Cloudflare zone. */
 export const SITES = [
-  { id: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false },
-  { id: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false },
-  { id: "carettafriends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false },
-  { id: "editor", host: "editor.superduperai.co", url: "https://editor.superduperai.co", open: false },
-  { id: "facealarm", host: "face-alarm.com", url: "https://face-alarm.com", open: false },
-  { id: "life2film", host: "life2film.com", url: "https://life2film.com", open: true },
-  { id: "live2play", host: "live2play.superduperai.co", url: "https://live2play.superduperai.co", open: true },
-  { id: "miralinka", host: "miralinka.com", url: "https://miralinka.com", open: false },
-  { id: "miralinka-marafon", host: "marafon.miralinka.com", url: "https://marafon.miralinka.com", open: false },
-  { id: "promptwizard", host: "prompt.superduperai.co", url: "https://prompt.superduperai.co", open: false },
-  { id: "rustman", host: "rustman.org", url: "https://rustman.org", open: false },
-  { id: "rusty", host: "rusty.superduperai.co", url: "https://rusty.superduperai.co", open: false },
-  { id: "superduperai", host: "superduperai.co", url: "https://superduperai.co", open: true },
-  { id: "you2idea", host: "you2idea.com", url: "https://you2idea.com", open: false },
+  { id: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false, retired: false },
+  { id: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false, retired: false },
+  { id: "carettafriends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false, retired: false },
+  { id: "editor", host: "editor.superduperai.co", url: "https://editor.superduperai.co", open: false, retired: true },
+  { id: "facealarm", host: "face-alarm.com", url: "https://face-alarm.com", open: false, retired: false },
+  { id: "life2film", host: "life2film.com", url: "https://life2film.com", open: true, retired: false },
+  { id: "live2play", host: "live2play.superduperai.co", url: "https://live2play.superduperai.co", open: true, retired: false },
+  { id: "miralinka", host: "miralinka.com", url: "https://miralinka.com", open: false, retired: false },
+  { id: "miralinka-marafon", host: "marafon.miralinka.com", url: "https://marafon.miralinka.com", open: false, retired: false },
+  { id: "promptwizard", host: "prompt.superduperai.co", url: "https://prompt.superduperai.co", open: false, retired: false },
+  { id: "rustman", host: "rustman.org", url: "https://rustman.org", open: false, retired: false },
+  { id: "rusty", host: "rusty.superduperai.co", url: "https://rusty.superduperai.co", open: false, retired: false },
+  { id: "superduperai", host: "superduperai.co", url: "https://superduperai.co", open: true, retired: false },
+  { id: "you2idea", host: "you2idea.com", url: "https://you2idea.com", open: false, retired: false },
 ] as const;
 
 /** Apps with the id their store knows them by — what the daily store-report job iterates. */

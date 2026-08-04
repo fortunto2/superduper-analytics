@@ -36,8 +36,11 @@ sites:
     url: https://rusty.superduperai.co
   - id: promptwizard
     url: https://prompt.superduperai.co
+  # Выключен: старый редактор, домен не отвечает. Остаётся здесь, а не удаляется — id
+  # партиционирует архив, и без строки история под этим именем становится необъяснимой.
   - id: editor
     url: https://editor.superduperai.co
+    retired: true
   - id: rustman
     url: https://rustman.org
   - id: akbuzat
