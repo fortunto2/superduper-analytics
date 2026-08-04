@@ -23,7 +23,7 @@ import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
-import { rollupDay } from "./rollup";
+import { rollupDay, rollupPages } from "./rollup";
 import { syncSearchConsole } from "./search/sync";
 import { readCampaigns, readTotals } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
@@ -385,6 +385,9 @@ export default {
         rollupDay(env, now)
           .then((r) => console.log("rollup", JSON.stringify(r)))
           .catch((e: unknown) => console.error("rollup failed", String(e))),
+        rollupPages(env, now)
+          .then((r) => console.log("rollup pages", JSON.stringify(r)))
+          .catch((e: unknown) => console.error("rollup pages failed", String(e))),
         // Search Console — единственный опережающий источник здесь: показы и позиции говорят,
         // где рост, тогда как всё остальное говорит, что уже случилось.
         syncSearchConsole(env, now)

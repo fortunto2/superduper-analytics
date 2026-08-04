@@ -108,3 +108,18 @@ CREATE TABLE IF NOT EXISTS search_daily (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS search_daily_site_day ON search_daily (site, day);
+
+-- Постраничная свёртка. Analytics Engine удаляет через 90 дней, и вместе с ним исчезнет
+-- ответ на вопрос «что читали в августе» — тот самый, ради которого фид и делается.
+-- Строка на страницу в сутки: у сайта с полусотней живых страниц это ~18k строк в год.
+CREATE TABLE IF NOT EXISTS page_daily (
+  day        TEXT NOT NULL,
+  source     TEXT NOT NULL,
+  path       TEXT NOT NULL,
+  page_views REAL NOT NULL,
+  engaged    REAL NOT NULL,
+  rolled     INTEGER NOT NULL,
+  PRIMARY KEY (day, source, path)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS page_daily_source_day ON page_daily (source, day);

@@ -18,7 +18,7 @@
  * nobody is watching — and until now the only way to notice was to look.
  */
 import { RETENTION_DAYS } from "./schema";
-import { buildQuery, parseRows, type StatsEnv } from "./stats";
+import { buildPagesQuery, buildQuery, parseBreakdown, parseRows, type StatsEnv } from "./stats";
 import { dayBefore, utcDay } from "./stores/schema";
 
 const SQL_ENDPOINT = "https://api.cloudflare.com/client/v4/accounts";
@@ -96,6 +96,48 @@ export async function rollupDay(
   await env.STORES.batch(binds);
 
   return { day, rows: binds.length, sources: sources.length, sampled };
+}
+
+/**
+ * Постраничная свёртка того же дня.
+ *
+ * Отдельно от источников, потому что размерность другая, и отдельным запросом, потому что
+ * группировка другая. Нужна ровно для одного: чтобы через девяносто дней остался ответ на
+ * вопрос «какая статья собирала трафик в августе», а не только «сколько его было всего».
+ */
+export async function rollupPages(
+  env: StatsEnv & { STORES?: D1Database },
+  now: number,
+  explicitDay?: string,
+): Promise<{ day: string; rows: number; note?: string }> {
+  const day = explicitDay ?? dayBefore(utcDay(now), 1);
+  if (env.STORES === undefined || env.CF_ACCOUNT_ID === undefined || env.CF_API_TOKEN === undefined) {
+    return { day, rows: 0, note: "not configured" };
+  }
+
+  const sql = buildPagesQuery(env.DATASET, RETENTION_DAYS).replace(
+    `WHERE timestamp > NOW() - INTERVAL '${RETENTION_DAYS}' DAY`,
+    `WHERE toDate(timestamp) = '${day}'`,
+  );
+  const response = await fetch(
+    `${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
+    { method: "POST", headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` }, body: sql },
+  );
+  if (!response.ok) return { day, rows: 0, note: `sql ${response.status}` };
+
+  const rows = parseBreakdown(await response.json());
+  if (rows.length === 0) return { day, rows: 0, note: "no pages" };
+
+  const statement = env.STORES.prepare(
+    `INSERT INTO page_daily (day, source, path, page_views, engaged, rolled)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (day, source, path)
+     DO UPDATE SET page_views = excluded.page_views, engaged = excluded.engaged, rolled = excluded.rolled`,
+  );
+  await env.STORES.batch(
+    rows.map((r) => statement.bind(day, r.source, r.key, r.page_views, r.engaged, now)),
+  );
+  return { day, rows: rows.length };
 }
 
 export type OwnDaily = { day: string; source: string; platform: string; value: number };
