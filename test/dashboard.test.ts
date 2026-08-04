@@ -15,6 +15,13 @@ describe("the dashboard's own script", () => {
     expect(() => new Function(js)).not.toThrow();
   });
 
+  it("has no backtick anywhere in the page it ships", () => {
+    // A backtick inside the template literal ends it mid-file. TypeScript then reports a
+    // syntax error hundreds of lines away from the comment that caused it, which is exactly
+    // how long it took to find the first time.
+    expect(DASHBOARD).not.toContain("`");
+  });
+
   it("draws series from a fixed palette rather than generating colours", () => {
     // A ninth series must fold into "other", never invent a hue: a generated colour lands
     // wherever it lands and the next one collides with it.

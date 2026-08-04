@@ -67,6 +67,8 @@ h2{font-size:13px;font-weight:600;margin:0 0 14px;letter-spacing:.04em;text-tran
 .links{display:flex;flex-wrap:wrap;gap:16px;margin:-8px 0 22px}
 .links a{color:var(--muted);text-decoration:none;font-size:13px;font-weight:600}
 .links a:hover{color:var(--series)}
+.srclink{color:var(--series);text-decoration:none;font-weight:600;white-space:nowrap}
+.srclink:hover{text-decoration:underline}
 .picker{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
 .chip{display:inline-block;padding:5px 12px;border:1px solid var(--border);border-radius:20px;
   font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;background:var(--surface)}
@@ -160,6 +162,26 @@ function line(daily){
   s+='<text x="'+(W-P)+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11" text-anchor="end">'+esc(daily[daily.length-1].day)+'</text>';
   return s+'</svg>'
 }
+
+/**
+ * Ссылка на первоисточник панели.
+ *
+ * Каждая панель — выжимка чужой системы, и рано или поздно возникает вопрос, на который здесь
+ * ответа нет: какой именно запрос, в какой стране, в какой день. Раньше на него отвечал тот,
+ * кто помнил, где смотреть. Теперь отвечает ссылка.
+ */
+function srcLink(href,label){
+  return '<a href="'+href+'" target="_blank" rel="noopener" class="srclink">'+esc(label)+' \u2197</a>'
+}
+var GSC=function(url){
+  return 'https://search.google.com/search-console/performance/search-analytics?resource_id='+
+    // Без регулярки: обратный слэш в шаблонной строке схлопывается и ломает её.
+    encodeURIComponent(url.split('?')[0].split('#')[0].replace('//','\u0000').split('/')[0].replace('\u0000','//')+'/')
+};
+// Форма ?to=/:account/... — Cloudflare сам подставляет аккаунт, поэтому его id не нужен ни в
+// коде, ни в вёрстке. ОБРАТНЫХ КАВЫЧЕК ЗДЕСЬ БЫТЬ НЕ МОЖЕТ: это содержимое шаблонной строки,
+// и одна такая кавычка обрывает её посреди файла.
+var CFZ=function(zone,page){ return 'https://dash.cloudflare.com/?to=/:account/'+zone+'/'+page };
 
 /** Суточные строки приходят по продуктам; для линии их надо свернуть по дням. */
 function byDay(rows,pick){
@@ -257,7 +279,8 @@ function render(o){
       h+='<tr><td><div class="name">'+esc(c.zone)+'</div><div class="sub">'+esc(c.sites.join(', '))+'</div></td>'+
         '<td class="n">'+fmt(c.edge_page_views)+'</td><td class="n">'+fmt(c.our_page_views)+'</td>'+
         '<td class="n">'+(aiBy[c.zone]?fmt(aiBy[c.zone]):'\u2014')+'</td>'+
-        '<td><span class="pill"><span class="dot" style="background:'+s.c+'"></span>'+esc(s.t)+'</span></td></tr>'});
+        '<td><span class="pill"><span class="dot" style="background:'+s.c+'"></span>'+esc(s.t)+'</span> '+
+        srcLink(CFZ(c.zone,'analytics/traffic'),'zone')+'</td></tr>'});
     h+='</tbody></table>'+
       '<p class="sub" style="margin:12px 0 0">The two columns are different populations and '+
       'their ratio means nothing: on life2film.com 86% of what the edge counts is curl and '+
@@ -295,7 +318,9 @@ function render(o){
     var paths=zonesOf[0].ai_paths||[];
     if(cur&&paths.length) h+='<p class="sub" style="margin:14px 0 4px">What they read: '+
       paths.slice(0,6).map(function(p){return esc(p.path)+' ('+p.requests+')'}).join(', ')+'</p>';
-    h+='<p class="sub" style="margin:8px 0 0">'+fmt(totalAi)+' requests over the last 24 hours \u2014 '+
+    h+='<p class="sub" style="margin:8px 0 0">'+
+      srcLink(CFZ(zonesOf[0].zone,'ai-crawl-control'),'AI Crawl Control in Cloudflare')+' \u00b7 '+
+      fmt(totalAi)+' requests over the last 24 hours \u2014 '+
       'the only window this dataset allows on the free plan. Verified by Cloudflare against the '+
       'agent\u2019s own IP ranges, so a script cannot get listed here by calling itself ClaudeBot. '+
       'These never reach our own counter: they do not run JavaScript.</p></div>';
@@ -317,7 +342,10 @@ function render(o){
       cols.map(function(m){return '<th class="n">'+esc(m.replace(/_/g,' '))+'</th>'}).join('')+
       '</tr></thead><tbody>';
     Object.keys(prods).sort().forEach(function(p){
-      h+='<tr><td class="name">'+esc(p)+'</td>'+cols.map(function(m){
+      var appId=(o.apps||{})[p];
+      h+='<tr><td class="name">'+esc(p)+(appId?' '+srcLink(
+        'https://appstoreconnect.apple.com/analytics/app/d30/'+appId+'/overview','ASC'):'')+'</td>'+
+        cols.map(function(m){
         var v=prods[p][m];
         return '<td class="n">'+(v===undefined?'\u2014':fmt(Math.round(v*100)/100))+'</td>'}).join('')+'</tr>'});
     h+='</tbody></table><p class="sub" style="margin:14px 0 0">Apple\u2019s own daily totals, '+
@@ -385,12 +413,19 @@ function render(o){
         '<td class="n">'+fmt(Math.round(r.clicks))+'</td>'+
         '<td class="n"'+(reach?' style="color:var(--warn)"':'')+'>'+ctr.toFixed(1)+'%</td>'+
         '<td class="n">'+r.position.toFixed(1)+'</td></tr>'});
-    h+='</tbody></table><p class="sub" style="margin:14px 0 0">From Google Search Console, '+
+    h+='</tbody></table>';
+    var sch=sdaChart((o.search_daily||[]).filter(function(r){return !cur||r.source===cur}),esc,fmt);
+    if(sch.svg) h+='<p class="sub" style="margin:18px 0 6px">Impressions per day</p>'+
+      '<div class="chart">'+sch.svg+'</div>'+sch.legend;
+    h+='<p class="sub" style="margin:14px 0 0">From Google Search Console, '+
       'lagging two to three days \u2014 the window here is shifted back to match, not truncated. '+
       'Position is averaged WEIGHTED by impressions: one impression at rank 90 would otherwise '+
       'drag a site down as hard as three hundred at rank 4. Amber CTR marks a query that ranks '+
       'in the top twenty and still gets almost no clicks \u2014 that is a title and description '+
-      'problem, which is the cheapest work on this page.</p></div>';
+      'problem, which is the cheapest work on this page.'+
+      (cur?' '+srcLink(GSC((o.stats.sources.find(function(r){return r.source===cur})||{}).domain?
+        'https://'+o.stats.sources.find(function(r){return r.source===cur}).domain:'https://'+cur),
+        'Open in Search Console'):'')+'</p></div>';
   }
 
   h+=half('Where in the world',st.countries,'Country',

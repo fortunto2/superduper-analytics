@@ -7,8 +7,8 @@
  * the only honest way to know whether the rollout is finished.
  */
 import { fetchAgentTraffic, type AgentTraffic } from "./agents";
-import { SITES } from "./registry.generated";
-import { readSearch, type SearchTotal } from "./search/sync";
+import { APPS, SITES } from "./registry.generated";
+import { readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
 import { readTotals, type StoreTotal } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
 
@@ -67,6 +67,10 @@ export type Overview = {
    * случилось; этот — сколько раз нас показали и не кликнули, то есть где рост.
    */
   search?: SearchTotal[];
+  /** Показы по дням — тренд «сколько раз нас показали», рядом с итогами. */
+  search_daily?: { day: string; source: string; events: number }[];
+  /** id продукта → id в App Store. Только чтобы построить ссылку в первоисточник. */
+  apps?: Record<string, string>;
 };
 
 export type OverviewEnv = StatsEnv & ZonesEnv & { STORES?: D1Database };
@@ -120,6 +124,16 @@ export async function fetchOverview(
     }
   })();
 
+  const searchDailyPromise = (async () => {
+    if (env.STORES === undefined) return [];
+    const to = dayBefore(utcDay(now), 3);
+    try {
+      return await readSearchDaily(env.STORES, dayBefore(to, Math.max(1, days) - 1), to);
+    } catch {
+      return [];
+    }
+  })();
+
   const storesPromise = (async (): Promise<StoreTotal[]> => {
     if (env.STORES === undefined) return [];
     const to = dayBefore(utcDay(now), 1);
@@ -133,10 +147,11 @@ export async function fetchOverview(
 
   // Край — best-effort: дашборд, показавший ничего из-за икоты чужого GraphQL, хуже дашборда,
   // который показал наши числа и честно сказал, что второй половины нет.
-  const [stats, stores, search, edgeResult] = await Promise.all([
+  const [stats, stores, search, searchDaily, edgeResult] = await Promise.all([
     fetchStats(env, days),
     storesPromise,
     searchPromise,
+    searchDailyPromise,
     edge.catch(() => null),
   ]);
   if (!stats.ok) return stats;
@@ -222,6 +237,8 @@ export async function fetchOverview(
       sites_reporting: LIVE_SITES.filter((s) => reporting.has(s.id)).length,
       stores,
       search,
+      search_daily: searchDaily,
+      apps: Object.fromEntries(APPS.map((a) => [a.id, a.storeId])),
     },
   };
 }

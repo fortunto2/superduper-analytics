@@ -79,6 +79,25 @@ export async function syncSearchConsole(
   return { provider: "search-console", days: days.length, sites: sites.length, rows, notes };
 }
 
+/** Показы по дням и сайтам — для тренда. Форма совпадает с рядами графика намеренно. */
+export async function readSearchDaily(
+  db: D1Database,
+  from: string,
+  to: string,
+): Promise<{ day: string; source: string; events: number }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT day, site AS source, SUM(impressions) AS events
+         FROM search_daily
+        WHERE kind = 'query' AND day >= ? AND day <= ?
+     GROUP BY day, site
+     ORDER BY day`,
+    )
+    .bind(from, to)
+    .all<{ day: string; source: string; events: number }>();
+  return results;
+}
+
 export type SearchTotal = {
   site: string;
   kind: string;
