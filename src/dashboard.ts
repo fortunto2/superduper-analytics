@@ -92,7 +92,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   border-left:3px solid var(--warn);border-radius:8px;padding:12px 14px;margin-bottom:20px}
 .empty{color:var(--muted);font-size:14px;padding:8px 0}
 svg{display:block;width:100%;height:200px;overflow:visible}
-.tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--border);
+.tip{position:fixed;max-width:220px;pointer-events:none;background:var(--surface);border:1px solid var(--border);
   border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);opacity:0;transition:opacity .1s}
 footer{color:var(--muted);font-size:12px;margin-top:28px;line-height:1.7}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
@@ -384,7 +384,16 @@ function render(o){
 
 app.addEventListener('mouseover',function(e){
   var r=e.target.closest('rect[data-d]');if(!r)return;
-  tip.innerHTML='<strong>'+esc(r.dataset.d)+'</strong><br>'+fmt(+r.dataset.v)+' events';
+  // data-v теперь разбивка по рядам, а не одно число: прежний код делал +строка и печатал
+  // NaN, потому что менялся график, а подсказка осталась от одноцветного.
+  var rowsOf=[];try{rowsOf=JSON.parse(r.dataset.v||'[]')}catch(err){rowsOf=[]}
+  var sum=rowsOf.reduce(function(a,x){return a+x[2]},0);
+  tip.innerHTML='<strong>'+esc(r.dataset.d)+'</strong> \u00b7 '+fmt(sum)+' events<br>'+
+    (rowsOf.length?rowsOf.map(function(x){
+      return '<span class="'+x[0]+'" style="display:inline-flex;align-items:center;gap:5px">'+
+        '<i style="width:8px;height:8px;border-radius:2px;background:var(--c);display:inline-block"></i>'+
+        esc(x[1])+' '+fmt(x[2])+'</span>'}).join('<br>')
+     :'<span class="sub">nothing that day</span>');
   tip.style.opacity=1});
 app.addEventListener('mousemove',function(e){
   tip.style.left=Math.min(e.clientX+14,innerWidth-160)+'px';tip.style.top=(e.clientY+14)+'px'});

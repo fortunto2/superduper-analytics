@@ -98,10 +98,16 @@ function sdaChart(rows,esc,fmt){
       out+='<circle cx="'+x(i)+'" cy="'+y(s.byName[n][d]||0)+'" r="3.5" fill="var(--c)" stroke="var(--surface)" stroke-width="2"/>'});
     out+='</g>'});
 
-  // Прозрачные полосы поверх всего — цель для наведения шире любой точки.
+  // Прозрачные полосы поверх всего — цель для наведения шире любой точки. В data-v лежит
+  // разбивка по рядам как JSON: подсказка над многорядным графиком обязана говорить, ЧЕЙ это
+  // столбец, а одно суммарное число отвечало бы на вопрос, которого никто не задавал.
   s.days.forEach(function(d,i){
-    var vals=names.map(function(n){return esc(n==='__other'?'other':n)+' '+(s.byName[n][d]||0)}).join(', ');
-    out+='<rect x="'+(x(i)-(W-L-R)/(s.days.length-1)/2)+'" y="0" width="'+((W-L-R)/(s.days.length-1))+'" height="'+H+'" fill="transparent" data-d="'+esc(d)+'" data-v="'+esc(vals)+'"/>'});
+    var rowsOf=names
+      .map(function(n){return [s.slot[n],n==='__other'?'other':n,s.byName[n][d]||0]})
+      .filter(function(r){return r[2]>0})
+      .sort(function(a,b){return b[2]-a[2]});
+    var half=(W-L-R)/(s.days.length-1)/2;
+    out+='<rect x="'+(x(i)-half)+'" y="0" width="'+(half*2)+'" height="'+H+'" fill="transparent" data-d="'+esc(d)+'" data-v="'+esc(JSON.stringify(rowsOf))+'"/>'});
 
   out+='<text x="'+L+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11">'+esc(s.days[0])+'</text>';
   out+='<text x="'+(W-R)+'" y="'+(H-6)+'" fill="var(--muted)" font-size="11" text-anchor="end">'+esc(s.days[s.days.length-1])+'</text>';
