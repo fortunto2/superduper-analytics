@@ -89,13 +89,29 @@ Durable Objects. Отсюда и опасение «не уйти бы в мин
 Не проверено: сам расход TURN/SFU — ни у одного из доступных токенов нет области Calls. Это
 панель Cloudflare → Realtime.
 
-### 2. Ключ ASC и vendor number · **вы** · блокирует пункты 3, 4, 5
+### 2. Vendor number · **вы** · блокирует установки и деньги
 
-- ASC → Users and Access → Integrations → App Store Connect API → Team Keys → `agent`
-  (`TSF5387DW5`) → роль **Admin**. Только через UI.
-- Vendor number: ASC → Payments and Financial Reports, восемь цифр. Это **не** provider id.
+**ASC → Payments and Financial Reports → Reports.** Число в левом верхнем углу, под названием
+юрлица. Это **не** provider id (`128499174`) — другое число, и подставить наугад нельзя.
 
-Три секрета из четырёх уже стоят. Готово, когда `make stores` пишет строки, а не «not configured».
+Три секрета из четырёх уже стоят; остался `ASC_VENDOR_NUMBER`. Готово, когда `make stores`
+пишет строки, а не «not configured».
+
+### 2b. Роль ключа → Admin · **вы** · блокирует только пункт 4
+
+**ASC → Users and Access → вкладка Integrations → App Store Connect API → Team Keys → `agent`
+(`TSF5387DW5`).** Если роль не редактируется — создать новый ключ с ролью Admin; тогда нужны
+новый `.p8` и его key id.
+
+**Поправка к тому, что записано было раньше.** Роль блокирует НЕ всё. Проверено 2026-08-04:
+
+| Что | Ответ Apple с нынешним ключом |
+|---|---|
+| `analyticsReportRequests` (Impressions, Page Views, разбивка по `ct`) | 403 «key does not allow this request» |
+| `salesReports` (установки, переустановки, деньги) | **не 403** — «Invalid vendor number», то есть валидация |
+
+То есть Sales and Trends ключу уже доступен, и весь код, который для него написан, ждёт одного
+числа, а не смены роли.
 
 ### 3. Отчёты подписок Apple · я · после 2
 
