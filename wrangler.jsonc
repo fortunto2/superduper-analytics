@@ -58,12 +58,12 @@
   "vars": {
     "DATASET": "superduper_events",
 
-    // Cloudflare Access. The team domain is public — it is in every login redirect — so it
-    // lives here rather than in a secret. ACCESS_AUD is the application's Audience tag from
-    // the Access app's Overview; without it a token minted for any other app in the same team
-    // would be accepted, which is fine with one app and a hole with two.
+    // Cloudflare Access. Both values are public — they travel in every login redirect — so
+    // they live here rather than in a secret. The AUD tag is what ties a token to THIS
+    // application: without it a token minted for any other app in the same team would be
+    // accepted here, which is harmless with one app and a hole the day there are two.
     "ACCESS_TEAM_DOMAIN": "life2film.cloudflareaccess.com",
-    "ACCESS_AUD": ""
+    "ACCESS_AUD": "86a7ba2b2d9e4cf77a645529e31e9281c8b36b5d6c1c6c370ee5412846d76829"
   }
 
   // Secrets, set with `wrangler secret put` and never committed — see .dev.vars.example:

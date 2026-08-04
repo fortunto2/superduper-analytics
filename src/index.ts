@@ -100,6 +100,12 @@ function authorized(c: { env: Bindings; req: { query: (k: string) => string | un
  *
  * Order matters: the key is checked first because it costs nothing, and the Access path only
  * fetches keys when there is a token to check.
+ *
+ * ЧЕСТНАЯ ОГОВОРКА. Пока Access стоит перед этими путями, ключ на них недостижим снаружи:
+ * Access отвечает редиректом на логин ДО того, как запрос дойдёт до воркера. То есть «вторая
+ * дверь» работает только внутри — для крона, для тестов и для того дня, когда приложение
+ * Access выключат или сузят. Машинный доступ снаружи — это Service Auth и служебный токен, а
+ * не общий ключ.
  */
 async function permitted(c: {
   env: Bindings;
