@@ -345,6 +345,31 @@ function render(o){
       'rather than by any identifier.</p></div>';
   }
 
+  // «Откуда» и «что читали» — две половины одного вопроса, поэтому рядом и одинаковой формы.
+  var half=function(title,rows,label,note){
+    var list=(rows||[]).filter(function(r){return !cur||r.source===cur});
+    if(!list.length) return '';
+    var byKey={};
+    list.forEach(function(r){var k=cur?r.key:r.key;
+      byKey[k]=byKey[k]||{views:0,eng:0,src:{}};byKey[k].views+=r.page_views;
+      byKey[k].eng+=r.engaged;byKey[k].src[r.source]=1});
+    var keys=Object.keys(byKey).sort(function(a,b){return byKey[b].views-byKey[a].views}).slice(0,12);
+    var h2='<div class="card"><h2>'+esc(title)+'</h2><table><thead><tr><th>'+esc(label)+'</th>'+
+      (cur?'':'<th>Product</th>')+'<th class="n">Page views</th><th class="n">Engaged</th>'+
+      '</tr></thead><tbody>';
+    keys.forEach(function(k){var v=byKey[k];
+      h2+='<tr><td class="name">'+esc(k)+'</td>'+
+        (cur?'':'<td class="sub">'+esc(Object.keys(v.src).sort().join(', '))+'</td>')+
+        '<td class="n">'+fmt(v.views)+'</td><td class="n">'+fmt(v.eng)+'</td></tr>'});
+    return h2+'</tbody></table><p class="sub" style="margin:14px 0 0">'+note+'</p></div>'
+  };
+  h+=half('Where they came from',st.referrers,'Referrer',
+    'Direct visits are absent by definition \u2014 they carry no referrer, and a row for them '+
+    'would read as \u201csource unknown\u201d rather than \u201cthere was no source\u201d. Only '+
+    'the HOST is kept: a full referrer carries other people\u2019s search queries and tokens.');
+  h+=half('What they read',st.pages,'Page',
+    'Query strings are stripped before storage, so a page appears once however it was linked.');
+
   h+='<div class="card"><h2>Sources</h2>';
   if(!rows.length) h+='<p class="empty">No events in this window.</p>';
   else{

@@ -75,6 +75,16 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
   },
   {
+    name: "content",
+    title: "Where visitors came from and what they read",
+    description:
+      "Two breakdowns for a window: referrer hosts (where visits came from) and paths (what " +
+      "was read), both bot-filtered. Direct visits carry no referrer and are absent from the " +
+      "first list by definition — their absence is not a gap. Only the referrer HOST is kept, " +
+      "never the full URL, so search queries and other sites' tokens never enter the store.",
+    inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
+  },
+  {
     name: "agent_traffic",
     title: "Which AI agents read the sites",
     description:
@@ -279,6 +289,28 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             "",
             "Store clicks are the last step we can see. What follows — product page views, " +
               "installs, purchases — is attributed by Apple to the same tag, aggregate only.",
+          ].join("\n"),
+          version,
+        );
+      }
+
+      if (name === "content") {
+        const top = (rows: { source: string; key: string; page_views: number; engaged: number }[]) =>
+          rows.slice(0, 15).map(r => `- ${r.key} (${r.source}) — ${r.page_views} views, ${r.engaged} engaged`);
+        const refs = stats.referrers ?? [];
+        const pages = stats.pages ?? [];
+        return toolText(
+          id,
+          [
+            `Last ${days} day(s).`,
+            "",
+            "## Where they came from",
+            ...(refs.length > 0
+              ? top(refs)
+              : ["Nothing — every visit in this window was direct or the referrer was withheld."]),
+            "",
+            "## What they read",
+            ...(pages.length > 0 ? top(pages) : ["No page views in this window."]),
           ].join("\n"),
           version,
         );

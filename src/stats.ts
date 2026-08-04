@@ -49,6 +49,10 @@ export type DayTotal = { day: string; source: string; events: number };
 export type Stats = {
   /** Empty until something is tagged — which is the normal state before the first campaign. */
   campaigns?: CampaignTotal[];
+  /** Откуда пришли — хосты рефереров. Прямые заходы не в счёт: у них реферера нет. */
+  referrers?: Breakdown[];
+  /** Что читали — пути. */
+  pages?: Breakdown[];
   window_days: number;
   /** Always true, and stated in the payload so a consumer cannot forget what these are. */
   sampled: true;
@@ -232,6 +236,60 @@ export function parseCampaigns(payload: unknown): CampaignTotal[] {
   }));
 }
 
+/** Одна строка «откуда пришли» или «что читали» — форма у обоих вопросов одна. */
+export type Breakdown = { source: string; key: string; page_views: number; engaged: number };
+
+/**
+ * Откуда пришли: хост реферера, боты исключены.
+ *
+ * Хост, а не полная ссылка — так решено в ingest и это не изменится: полный реферер несёт
+ * поисковые запросы и токены из чужих адресных строк. «google.com» отвечает на вопрос, ради
+ * которого сюда смотрят, и не приносит с собой ничего лишнего.
+ *
+ * Прямые заходы сюда не попадают: у них реферера нет, и строка с пустым ключом означала бы
+ * «источник неизвестен», а не «источника не было».
+ */
+export function buildReferrerQuery(dataset: string, days: number): string {
+  return breakdown(dataset, days, "blob5", "AND blob5 != ''");
+}
+
+/** Что читали: путь без строки запроса — её срезает ingest, и в слот она не попадает. */
+export function buildPagesQuery(dataset: string, days: number): string {
+  return breakdown(dataset, days, "blob4", "AND blob4 != ''");
+}
+
+function breakdown(dataset: string, days: number, column: string, extra: string): string {
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+  }
+  return [
+    "SELECT",
+    "  blob1 AS source,",
+    `  ${column} AS key,`,
+    "  sum(if(blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
+    "  sum(if(blob3 = 'page_engaged', _sample_interval, 0)) AS engaged",
+    `FROM ${dataset}`,
+    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob9 != 'bot' ${extra}`,
+    "GROUP BY source, key",
+    "ORDER BY page_views DESC",
+    "LIMIT 60",
+    "FORMAT JSON",
+  ].join("\n");
+}
+
+export function parseBreakdown(payload: unknown): Breakdown[] {
+  const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => ({
+      source: String(row.source ?? ""),
+      key: String(row.key ?? ""),
+      page_views: Number(row.page_views ?? 0),
+      engaged: Number(row.engaged ?? 0),
+    }))
+    .filter((row) => row.page_views > 0 || row.engaged > 0);
+}
+
 export type StatsEnv = {
   DATASET: string;
   CF_ACCOUNT_ID?: string;
@@ -277,10 +335,12 @@ export async function fetchStats(
       body: sql,
     });
 
-  const [totals, daily, campaigns] = await Promise.all([
+  const [totals, daily, campaigns, referrers, pages] = await Promise.all([
     ask(buildQuery(env.DATASET, days)),
     ask(buildDailyQuery(env.DATASET, days)),
     ask(buildCampaignQuery(env.DATASET, days)),
+    ask(buildReferrerQuery(env.DATASET, days)),
+    ask(buildPagesQuery(env.DATASET, days)),
   ]);
 
   if (!totals.ok) {
@@ -311,6 +371,8 @@ export async function fetchStats(
       // The trend is decoration next to the totals: if it fails, show the numbers anyway.
       daily: daily.ok ? parseDays(await daily.json()) : [],
       campaigns: campaigns.ok ? parseCampaigns(await campaigns.json()) : [],
+      referrers: referrers.ok ? parseBreakdown(await referrers.json()) : [],
+      pages: pages.ok ? parseBreakdown(await pages.json()) : [],
     },
   };
 }
