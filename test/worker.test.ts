@@ -85,10 +85,12 @@ describe("GET /v1/stats", () => {
   const stats = (query: string) =>
     SELF.fetch(`https://analytics.example/v1/stats${query}&k=${env.DASHBOARD_KEY}`);
 
-  it("refuses a window past the hot store's retention", async () => {
+  it("answers past retention with an empty set flagged as such, not a shortened one", async () => {
     const res = await stats("?days=999");
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: "beyond_retention" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { window_days: number; beyond_retention: boolean };
+    expect(body.beyond_retention).toBe(true);
+    expect(body.window_days).toBe(999);
   });
 
   it("refuses a window that is not a number at all", async () => {
@@ -117,10 +119,14 @@ describe("the read side is not public", () => {
   });
 
   it("accepts a bearer token as well, for scripts", async () => {
+    // Окно за пределом хранения выбрано намеренно: обработчик отвечает на него, не сходив в
+    // SQL API, поэтому проверка не требует ни сети, ни настоящего токена Cloudflare. Важно
+    // здесь одно — что это НЕ 401: значит ключ в заголовке принят наравне с ключом в адресе.
     const res = await SELF.fetch("https://analytics.example/v1/stats?days=999", {
       headers: { authorization: `Bearer ${env.DASHBOARD_KEY}` },
     });
-    expect(res.status).toBe(400); // reached the handler, refused on the window
+    expect(res.status).toBe(200);
+    expect((await res.json() as { beyond_retention?: boolean }).beyond_retention).toBe(true);
   });
 
   it("leaves ingest and the snippet open — a beacon cannot carry a secret", async () => {

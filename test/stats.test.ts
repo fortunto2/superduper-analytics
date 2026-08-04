@@ -72,13 +72,19 @@ describe("parseRows", () => {
 });
 
 describe("fetchStats guards", () => {
-  it("refuses a window past the hot store's retention instead of silently shortening it", async () => {
+  it("answers past retention with an empty set and says so, never with a shorter window", async () => {
+    // Раньше здесь был отказ, и он был прав, пока архива не существовало: молча ответить за
+    // 90 дней на вопрос про год — худшее из возможного. Теперь архив есть, и отказ означал бы
+    // «за год ничего нет» вместо «событий нет, а архив отвечает».
     const result = await fetchStats(env, RETENTION_DAYS + 1);
-    expect(result).toMatchObject({
-      ok: false,
-      status: 400,
-      body: { error: "beyond_retention", limit: RETENTION_DAYS },
-    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Окно возвращается ЗАПРОШЕННОЕ, а не урезанное — иначе подмена всё равно случилась бы,
+    // просто тише.
+    expect(result.stats.window_days).toBe(RETENTION_DAYS + 1);
+    expect(result.stats.beyond_retention).toBe(true);
+    expect(result.stats.sources).toEqual([]);
+    expect(result.stats.total_page_views).toBe(0);
   });
 
   it.each([0, -3, 1.5])("refuses a nonsense window (%s)", async (days) => {

@@ -134,6 +134,33 @@ export async function rollupPages(
   return { day, rows: rows.length };
 }
 
+/** Строка архива страниц: чей счётчик, какой день, сколько просмотров. */
+export type PageHistoryRow = { day: string; source: string; provider: string; page_views: number };
+
+/**
+ * Постраничная история из архива — единственный источник за пределами 90 дней.
+ *
+ * Свёрнуто по дням и продуктам, а не по страницам: панель отвечает на «сколько читали», а не
+ * «что читали», и тысяча строк на день ради суммы — это лишняя работа для D1 и для браузера.
+ */
+export async function readPageHistory(
+  db: D1Database,
+  from: string,
+  to: string,
+): Promise<PageHistoryRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT day, source, provider, SUM(page_views) AS page_views
+         FROM page_daily
+        WHERE day >= ? AND day <= ?
+     GROUP BY day, source, provider
+     ORDER BY day`,
+    )
+    .bind(from, to)
+    .all<PageHistoryRow>();
+  return results;
+}
+
 export type OwnDaily = { day: string; source: string; platform: string; value: number };
 
 /** История одной метрики по продуктам. Отвечает и за пределами 90 дней — в этом весь смысл. */

@@ -47,6 +47,8 @@ export type SourceTotal = {
 export type DayTotal = { day: string; source: string; events: number };
 
 export type Stats = {
+  /** Окно длиннее срока хранения событий: числа ниже пусты не от сбоя, а по устройству. */
+  beyond_retention?: boolean;
   /** Empty until something is tagged — which is the normal state before the first campaign. */
   campaigns?: CampaignTotal[];
   /** Откуда пришли — хосты рефереров. Прямые заходы не в счёт: у них реферера нет. */
@@ -412,15 +414,24 @@ export async function fetchStats(
     return { ok: false, status: 400, body: { error: "bad_window", message: "days must be a positive integer" } };
   }
   if (days > RETENTION_DAYS) {
-    // Refuse rather than quietly answer a shorter window. Longer questions are archive
-    // questions, and the archive is a different store with different numbers.
+    // Раньше здесь был отказ, и он был прав, пока архива не существовало. Теперь архив есть, и
+    // отказ означал бы «за год ничего нет» вместо «за год есть архив, а событий нет».
+    // Возвращаем пустой набор с честным флагом: панель истории читает D1 и рисует своё,
+    // остальные панели показывают пусто и говорят почему.
     return {
-      ok: false,
-      status: 400,
-      body: {
-        error: "beyond_retention",
-        message: `the hot store keeps ${RETENTION_DAYS} days; anything older lives in the archive`,
-        limit: RETENTION_DAYS,
+      ok: true,
+      stats: {
+        window_days: days,
+        sampled: true,
+        beyond_retention: true,
+        total_events: 0,
+        total_bot_events: 0,
+        total_page_views: 0,
+        total_engaged: 0,
+        total_people: 0,
+        sampling_active: false,
+        sources: [],
+        daily: [],
       },
     };
   }

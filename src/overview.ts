@@ -8,6 +8,7 @@
  */
 import { fetchAgentTraffic, type AgentTraffic } from "./agents";
 import { APPS, SITES } from "./registry.generated";
+import { readPageHistory, type PageHistoryRow } from "./rollup";
 import { LAG_DAYS, readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
 import { readTotals, type StoreTotal } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
@@ -71,6 +72,14 @@ export type Overview = {
   search_daily?: { day: string; source: string; events: number }[];
   /** id продукта → id в App Store. Только чтобы построить ссылку в первоисточник. */
   apps?: Record<string, string>;
+  /**
+   * Постраничная история из архива: наш счётчик и Google Analytics, по дням и продуктам.
+   *
+   * Единственный источник за пределами 90 дней — Analytics Engine к тому времени уже стёр
+   * исходник. Числа двух счётчиков лежат рядом и НЕ складываются: GA считает своим способом,
+   * с блокировщиками и своим определением сеанса, наш — без кук и с сэмплированием.
+   */
+  history?: PageHistoryRow[];
 };
 
 export type OverviewEnv = StatsEnv & ZonesEnv & { STORES?: D1Database };
@@ -134,6 +143,16 @@ export async function fetchOverview(
     }
   })();
 
+  const historyPromise = (async (): Promise<PageHistoryRow[]> => {
+    if (env.STORES === undefined) return [];
+    const to = utcDay(now);
+    try {
+      return await readPageHistory(env.STORES, dayBefore(to, Math.max(1, days) - 1), to);
+    } catch {
+      return [];
+    }
+  })();
+
   const storesPromise = (async (): Promise<StoreTotal[]> => {
     if (env.STORES === undefined) return [];
     const to = dayBefore(utcDay(now), 1);
@@ -147,11 +166,12 @@ export async function fetchOverview(
 
   // Край — best-effort: дашборд, показавший ничего из-за икоты чужого GraphQL, хуже дашборда,
   // который показал наши числа и честно сказал, что второй половины нет.
-  const [stats, stores, search, searchDaily, edgeResult] = await Promise.all([
+  const [stats, stores, search, searchDaily, history, edgeResult] = await Promise.all([
     fetchStats(env, days),
     storesPromise,
     searchPromise,
     searchDailyPromise,
+    historyPromise,
     edge.catch(() => null),
   ]);
   if (!stats.ok) return stats;
@@ -238,6 +258,7 @@ export async function fetchOverview(
       stores,
       search,
       search_daily: searchDaily,
+      history,
       apps: Object.fromEntries(APPS.map((a) => [a.id, a.storeId])),
     },
   };

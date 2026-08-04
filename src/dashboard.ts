@@ -103,7 +103,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
     <h1>superduper analytics <span id="win"></span></h1>
     <div class="range" role="group" aria-label="Time range">
       <button data-d="1">24h</button><button data-d="7">7d</button>
-      <button data-d="30">30d</button><button data-d="90">90d</button>
+      <button data-d="30">30d</button><button data-d="90">90d</button><button data-d="365">1y</button>
     </div>
   </header>
   <!-- Остальные входы в те же данные. Без этого о них помнит только тот, кто их написал:
@@ -261,6 +261,10 @@ function render(o){
     'but counts scrapers too, so it is an upper bound, not a second opinion.</p>';
 
   var ch=sdaChart((st.daily||[]).filter(function(r){return !cur||r.source===cur}),esc,fmt);
+  if(days>90) h+='<div class="note">Past 90 days the event store is empty by design \u2014 it '+
+    'deletes at that point. Everything below except <strong>Page views over time</strong> is '+
+    'therefore blank for this window; that panel reads the archive instead.</div>';
+
   h+='<div class="card"><h2>Events per day</h2>'+
     (ch.svg?'<div class="chart">'+ch.svg+'</div>'+ch.legend
            :'<p class="empty">Not enough days yet to draw a trend.</p>')+'</div>';
@@ -395,6 +399,38 @@ function render(o){
     'Direct visits are absent by definition \u2014 they carry no referrer, and a row for them '+
     'would read as \u201csource unknown\u201d rather than \u201cthere was no source\u201d. Only '+
     'the HOST is kept: a full referrer carries other people\u2019s search queries and tokens.');
+  // История из архива. За пределами 90 дней это ЕДИНСТВЕННЫЙ источник: Analytics Engine к
+  // тому времени уже стёр исходник, и «за год» без этой таблицы было бы просто пусто.
+  var hist=(o.history||[]).filter(function(r){return !cur||r.source===cur});
+  if(hist.length){
+    var by={};
+    hist.forEach(function(r){
+      var k=r.source+"|"+r.provider;
+      by[k]=by[k]||{source:r.source,provider:r.provider,views:0,days:{}};
+      by[k].views+=r.page_views; by[k].days[r.day]=1});
+    var rows2=Object.keys(by).map(function(k){return by[k]})
+      .sort(function(a,b){return b.views-a.views});
+    h+='<div class="card"><h2>Page views over time</h2><table><thead><tr>'+
+      (cur?'':'<th>Product</th>')+'<th>Counter</th><th class="n">Page views</th>'+
+      '<th class="n">Days with data</th></tr></thead><tbody>';
+    rows2.forEach(function(r){
+      h+='<tr>'+(cur?'':'<td class="name">'+esc(r.source)+'</td>')+
+        '<td class="sub">'+(r.provider==="ga4"?"Google Analytics":"ours")+'</td>'+
+        '<td class="n">'+fmt(Math.round(r.views))+'</td>'+
+        '<td class="n">'+Object.keys(r.days).length+'</td></tr>'});
+    h+='</tbody></table>';
+    // График строится из тех же строк: наш счётчик и Google рисуются РАЗНЫМИ рядами, а не
+    // склеиваются в один. Это разные счётчики, и совпадать они не должны.
+    var hch=sdaChart(hist.map(function(r){
+      return {day:r.day,source:r.source+(r.provider==="ga4"?" (GA)":""),events:r.page_views}}),esc,fmt);
+    if(hch.svg) h+='<div class="chart" style="margin-top:18px">'+hch.svg+'</div>'+hch.legend;
+    h+='<p class="sub" style="margin:14px 0 0">From the daily archive in D1, which is the only '+
+      'source past 90 days \u2014 the event store deletes at that point. Two counters, never '+
+      'added together: Google Analytics counts its own way, with ad blockers and its own idea '+
+      'of a session; ours counts without cookies and with sampling. They will not agree, and '+
+      'neither is correcting the other.</p></div>';
+  }
+
   // Цели — то, ради чего сайт существует. Стоят выше разрезов: просмотры это фон, а скачали
   // или ушли в магазин — событие. Их единицы против сотен просмотров, и в общей таблице они
   // не видны никогда.
