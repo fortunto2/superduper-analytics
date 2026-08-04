@@ -10,9 +10,10 @@
  *   5. Only then Pipelines → R2 Iceberg (v2).
  */
 import { Hono } from "hono";
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { accessIdentity } from "./access";
 import { deriveAnon } from "./anon";
-import { buildFeed, FEED_CACHE_SECONDS, sourceForKey } from "./feed";
+import { buildFeed } from "./feed";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
 import { isRegisteredOrigin } from "./registry";
@@ -195,73 +196,6 @@ app.get("/", (c) => c.redirect(`/dashboard${new URL(c.req.url).search}`, 302));
 app.get("/health", (c) => c.json({ ok: true, stage: "ingest" }));
 
 /**
- * Фид по страницам одного сайта — для его собственной админки. См. docs/tz-site-feed.md.
- *
- * Вне `/v1/*` намеренно: там Access, и чужой сервер его не пройдёт. Ключ определяет источник,
- * параметра `source` тут нет вовсе — не «игнорируется», а отсутствует.
- */
-app.get("/feed", async (c) => {
-  const given = c.req.header("authorization")?.replace(/^Bearer /, "") ?? c.req.query("key");
-  const source = sourceForKey(c.env.FEED_KEYS, given);
-  // 404, а не 401: незачем подтверждать, что по этому адресу вообще что-то есть.
-  if (source === undefined) return c.text("not found", 404);
-
-  const cache = caches.default;
-  const key = cacheKey(c);
-  const cached = await cache.match(key);
-  if (cached !== undefined) return cached;
-
-  const feed = await buildFeed(c.env, source, Number(c.req.query("days") ?? 30), Date.now());
-  const response = c.json(feed);
-  response.headers.set("cache-control", `private, max-age=${FEED_CACHE_SECONDS}`);
-  c.executionCtx.waitUntil(cache.put(key, response.clone()));
-  return response;
-});
-
-/**
- * A favicon, so every dashboard load stops logging a 404 against itself. An SVG in the source
- * rather than a binary in a bucket: it is nine bytes of shape, and a Worker that needs an asset
- * pipeline to draw a square has the wrong kind of dependency.
- */
-const FAVICON =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
-  '<rect width="32" height="32" rx="7" fill="#111"/>' +
-  '<rect x="7" y="17" width="4" height="8" fill="#fff"/>' +
-  '<rect x="14" y="12" width="4" height="13" fill="#fff"/>' +
-  '<rect x="21" y="7" width="4" height="18" fill="#fff"/></svg>';
-
-app.get("/favicon.ico", (c) => {
-  c.header("content-type", "image/svg+xml");
-  c.header("cache-control", "public, max-age=604800");
-  return c.body(FAVICON);
-});
-
-/**
- * The web snippet. Served from here so the thirteen sites embed a URL once and never need
- * editing again — every later change to how a browser reports is a deploy.
- */
-app.get("/sda.js", (c) => {
-  const etag = `"sda-${SNIPPET_VERSION}"`;
-  c.header("content-type", "application/javascript; charset=utf-8");
-  // `stale-while-revalidate` is what makes the hour survivable: a returning visitor runs the
-  // cached copy instantly AND the browser fetches the new one in the background, so a fix
-  // reaches the second page view instead of waiting out the full hour. Without it, deploying
-  // a snippet change and then verifying it in your own browser proves nothing for an hour —
-  // which is exactly how this was found.
-  c.header(
-    "cache-control",
-    `public, max-age=${SNIPPET_CACHE_SECONDS}, stale-while-revalidate=86400`,
-  );
-  // SNIPPET_VERSION called itself "the cache key visitors actually see" while appearing in no
-  // response at all. It does now: revalidation costs a 304 with no body instead of 2 KB.
-  c.header("etag", etag);
-  // The one file here that a third-party origin must be allowed to load.
-  c.header("access-control-allow-origin", "*");
-  if (c.req.header("if-none-match") === etag) return c.body(null, 304);
-  return c.body(SNIPPET);
-});
-
-/**
  * Ingest. One endpoint for web beacons and mobile flushes — same schema, so a landing visit
  * and an app launch are comparable without a join.
  */
@@ -401,6 +335,36 @@ app.post("/v1/stores/sync", async (c) => {
   const result = await syncAppStore(c.env, Date.now(), from);
   return c.json(result);
 });
+
+/**
+ * Фид по страницам — через привязку сервиса, а не через HTTP с ключом.
+ *
+ * Именованная точка входа недостижима из интернета вовсе: её видят только воркеры этого
+ * аккаунта, объявившие привязку явно. Значит не нужен ни ключ, ни его выдача, ни его отзыв,
+ * ни вопрос, что делать, если он утёк — ничего из этого не существует.
+ *
+ * Раньше здесь был `GET /feed` с ключом на источник. Он работал, но требовал от потребителя
+ * двух секретов и от нас — их жизненного цикла. Привязка убирает и то и другое, и заодно
+ * запрос не выходит в сеть.
+ *
+ * `source` приходит аргументом и ему верят: объявить такую привязку может только тот, у кого
+ * уже есть доступ к аккаунту, то есть владелец. Проверять его тут значило бы изображать
+ * границу там, где она уже пройдена.
+ *
+ * Потребитель (Cloudflare Pages в том же аккаунте):
+ *
+ *   [[services]]
+ *   binding = "ANALYTICS"
+ *   service = "superduper-analytics"
+ *   entrypoint = "Feed"
+ *
+ *   const feed = await env.ANALYTICS.pages("miralinka", 30);
+ */
+export class Feed extends WorkerEntrypoint<Bindings> {
+  async pages(source: string, days = 30) {
+    return await buildFeed(this.env, source, days, Date.now());
+  }
+}
 
 export default {
   fetch: app.fetch,

@@ -3,13 +3,10 @@
  *
  * Спека — docs/tz-site-feed.md. Здесь только то, что стоит держать рядом с кодом.
  *
- * ЖИВЁТ ВНЕ `/v1/*` НАМЕРЕННО. Там стоит Cloudflare Access, и он отвечает редиректом на логин
- * ДО того, как запрос дойдёт до воркера. Чужой сервер этот логин не пройдёт никогда, поэтому
- * фид получает свой префикс и свой ключ — рядом с `/e` и `/sda.js`, по той же причине.
- *
- * КЛЮЧ ОПРЕДЕЛЯЕТ ИСТОЧНИК. Не параметр запроса: иначе подстановка `?source=superduperai`
- * превращает фид одного сайта в чтение всего портфеля. Параметра `source` в этом файле нет
- * вовсе — не «игнорируется», а отсутствует, и добавить его обратно можно только осознанно.
+ * НЕ ОТДАЁТСЯ ПО HTTP ВООБЩЕ. Вызывается через именованную точку входа `Feed` в index.ts,
+ * которую видят только воркеры этого аккаунта с явной привязкой. Первая версия была
+ * `GET /feed` с ключом на источник: она работала, но требовала от потребителя двух секретов,
+ * а от нас — их выдачи, хранения и отзыва. Ничего из этого больше не существует.
  */
 import { buildPagesQuery, parseBreakdown, RETENTION_DAYS_SAFE, type StatsEnv } from "./stats";
 import { readSearch } from "./search/sync";
@@ -17,11 +14,7 @@ import { dayBefore, utcDay } from "./stores/schema";
 
 export const FEED_CACHE_SECONDS = 900;
 
-export type FeedEnv = StatsEnv & {
-  /** `source:key` через запятую. Ключ на источник — отзыв одного не трогает остальные. */
-  FEED_KEYS?: string;
-  STORES?: D1Database;
-};
+export type FeedEnv = StatsEnv & { STORES?: D1Database };
 
 export type FeedPage = {
   path: string;
@@ -33,24 +26,6 @@ export type FeedPage = {
   clicks: number;
   position: number;
 };
-
-/**
- * Кому принадлежит ключ. Возвращает id источника или undefined.
- *
- * Сравнение идёт по всей строке ключа, а не по префиксу: ключ, совпавший началом, — это
- * подбор, а не совпадение.
- */
-export function sourceForKey(keys: string | undefined, given: string | undefined): string | undefined {
-  if (keys === undefined || keys === "" || given === undefined || given === "") return undefined;
-  for (const pair of keys.split(",")) {
-    const at = pair.indexOf(":");
-    if (at < 0) continue;
-    const source = pair.slice(0, at).trim();
-    const key = pair.slice(at + 1).trim();
-    if (key !== "" && key === given) return source;
-  }
-  return undefined;
-}
 
 /**
  * Один вид пути для склейки.

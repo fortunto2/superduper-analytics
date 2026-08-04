@@ -33,10 +33,6 @@ ASC_PRIVATE_KEY=placeholder
 # Find yours with: curl -s https://cloudflare.com/cdn-cgi/trace | grep '^ip='
 INTERNAL_IPS=203.0.113.7,198.51.100.22
 
-# Ключи для фида по страницам — по одному на сайт, `source:key` через запятую. Отзыв одного
-# не трогает остальные, а утёкший открывает ровно один источник. См. docs/tz-site-feed.md.
-#   pnpm wrangler secret put FEED_KEYS
-FEED_KEYS=miralinka:placeholder,rustman:placeholder
 
 # Salt for the per-day anonymous id. Any long random string; rotating it resets all anon ids,
 # which is a feature — it is the panic button if one ever needs to stop being derivable.
