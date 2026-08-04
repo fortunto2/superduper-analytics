@@ -90,7 +90,7 @@ function authorized(c: { env: Bindings; req: { query: (k: string) => string | un
   return given === expected;
 }
 
-app.use("/", async (c, next) => {
+app.use("/dashboard", async (c, next) => {
   if (!authorized(c)) return c.text("not found", 404);
   await next();
 });
@@ -137,12 +137,24 @@ app.get("/open.json", async (c) => {
   return response;
 });
 
-/** The dashboard. Never indexed, never cached publicly — it is one operator's view. */
-app.get("/", (c) => {
+/**
+ * The dashboard. Never indexed, never cached publicly — it is one operator's view.
+ *
+ * On `/dashboard` rather than `/`, and that is the whole point: Cloudflare Access protects a
+ * hostname or a path PREFIX, so an application defined on the bare host would sit in front of
+ * `/e` and `/sda.js` too. Every counter on every site would start receiving a login page
+ * instead of a 204 — silently, because a beacon never looks at the answer. Giving the private
+ * side its own prefix is what makes "put SSO in front of it" a configuration change rather
+ * than an outage.
+ */
+app.get("/dashboard", (c) => {
   c.header("content-type", "text/html; charset=utf-8");
   c.header("cache-control", "private, no-store");
   return c.body(DASHBOARD);
 });
+
+/** The old address, kept working: it is in bookmarks and in half this repository's docs. */
+app.get("/", (c) => c.redirect(`/dashboard${new URL(c.req.url).search}`, 302));
 
 app.get("/health", (c) => c.json({ ok: true, stage: "ingest" }));
 

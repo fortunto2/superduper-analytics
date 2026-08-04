@@ -144,3 +144,36 @@ describe("GET /health", () => {
     expect(await res.json()).toEqual({ ok: true, stage: "ingest" });
   });
 });
+
+describe("the private side lives under its own prefix", () => {
+  it("serves the dashboard at /dashboard so Access can be scoped to it", async () => {
+    const res = await SELF.fetch(`https://analytics.example/dashboard?k=${env.DASHBOARD_KEY}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+  });
+
+  it("keeps the old address working, because it is in bookmarks and docs", async () => {
+    const res = await SELF.fetch(`https://analytics.example/?k=${env.DASHBOARD_KEY}`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    // The window and the key survive the hop, or the redirect logs you out.
+    expect(res.headers.get("location")).toBe(`/dashboard?k=${env.DASHBOARD_KEY}`);
+  });
+
+  it("still refuses the dashboard without the key", async () => {
+    expect((await SELF.fetch("https://analytics.example/dashboard")).status).toBe(404);
+  });
+
+  // The reason the move happened at all: an Access application on the bare hostname would
+  // cover these two, and every counter on every site would get a login page instead of a 204.
+  it("leaves ingest and the snippet outside the protected prefix", async () => {
+    const beacon = await SELF.fetch("https://analytics.example/e", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify({
+        events: [{ source: "carettafriends", platform: "web", name: "page_viewed" }],
+      }),
+    });
+    expect(beacon.status).toBe(204);
+    expect((await SELF.fetch("https://analytics.example/sda.js")).status).toBe(200);
+  });
+});
