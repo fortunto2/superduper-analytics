@@ -223,6 +223,15 @@ function render(o){
     (cur?tile('Product',esc(cur),'one of '+o.sites_total+' registered')
         :tile('Counters live',o.sites_reporting+' / '+o.sites_total,'registered sites'))+
   '</div>';
+
+  // Агенты живут в другом окне — сутки, потолок бесплатного тарифа у этого датасета. Число
+  // стоит рядом с остальными, поэтому окно названо прямо в подписи: молча смешать «за 7 дней»
+  // и «за сутки» в одной строке плиток — это соврать формой, ничего не соврав цифрой.
+  var aiTotal=(o.agents||[]).reduce(function(a,z){return a+z.ai_requests},0);
+  if(aiTotal) h+='<div class="tiles" style="margin-top:-12px">'+
+    tile('AI agents',fmt(aiTotal),'verified, last 24h \u2014 not the window above')+
+    tile('Zones they read',String((o.agents||[]).length),'of '+o.coverage.length+' with edge data')+
+  '</div>';
   if(o.edge_available&&!cur) h+='<p class="sub" style="margin:-8px 0 20px">Cloudflare\\u2019s edge saw '+
     fmt(edge)+' unique clients over the same window \\u2014 that figure loses nothing to sampling '+
     'but counts scrapers too, so it is an upper bound, not a second opinion.</p>';
@@ -236,17 +245,21 @@ function render(o){
   if(!o.edge_available) h+='<p class="empty">Cloudflare edge analytics unavailable — coverage cannot be judged.</p>';
   else if(!o.coverage.length) h+='<p class="empty">No registered site sits in a Cloudflare zone.</p>';
   else{
+    var aiBy={};(o.agents||[]).forEach(function(z){aiBy[z.zone]=z.ai_requests});
     h+='<table><thead><tr><th>Zone</th><th class="n">Edge, all traffic</th>'+
-       '<th class="n">Ours, browsers</th><th>State</th></tr></thead><tbody>';
+       '<th class="n">Ours, browsers</th><th class="n">AI agents, 24h</th><th>State</th></tr></thead><tbody>';
     o.coverage.forEach(function(c){var s=status(c.our_page_views,c.edge_page_views);
       h+='<tr><td><div class="name">'+esc(c.zone)+'</div><div class="sub">'+esc(c.sites.join(', '))+'</div></td>'+
         '<td class="n">'+fmt(c.edge_page_views)+'</td><td class="n">'+fmt(c.our_page_views)+'</td>'+
+        '<td class="n">'+(aiBy[c.zone]?fmt(aiBy[c.zone]):'\u2014')+'</td>'+
         '<td><span class="pill"><span class="dot" style="background:'+s.c+'"></span>'+esc(s.t)+'</span></td></tr>'});
     h+='</tbody></table>'+
       '<p class="sub" style="margin:12px 0 0">The two columns are different populations and '+
       'their ratio means nothing: on life2film.com 86% of what the edge counts is curl and '+
       'unidentified scrapers, against ~12% real browsers. Read this as installed or not '+
-      'installed, and read the trend from our own column alone.</p>';
+      'installed, and read the trend from our own column alone. The agent column is a third '+
+      'window \u2014 24 hours, the widest this dataset allows on the free plan \u2014 so it is '+
+      'comparable between zones and not with the two columns beside it.</p>';
   }
   h+='</div>';
   }
