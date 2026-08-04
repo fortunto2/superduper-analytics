@@ -37,7 +37,12 @@ export type SourceTotal = {
   domain?: string;
 };
 
-export type DayTotal = { day: string; events: number };
+/**
+ * One day of one product. Kept per source rather than pre-summed: the overview adds them up in
+ * the browser, and a product page needs its own line — two queries for the same rows would cost
+ * twice the metered read budget to answer the same question.
+ */
+export type DayTotal = { day: string; source: string; events: number };
 
 export type Stats = {
   /** Empty until something is tagged — which is the normal state before the first campaign. */
@@ -136,19 +141,24 @@ export function buildDailyQuery(dataset: string, days: number): string {
   return [
     "SELECT",
     "  toDate(timestamp) AS day,",
+    "  blob1 AS source,",
     "  sum(_sample_interval) AS events",
     `FROM ${dataset}`,
     `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
-    "GROUP BY day",
+    "GROUP BY day, source",
     "ORDER BY day",
     "FORMAT JSON",
   ].join("\n");
 }
 
 export function parseDays(payload: unknown): DayTotal[] {
-  const rows = (payload as { data?: { day?: unknown; events?: unknown }[] } | null)?.data;
+  const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
   if (!Array.isArray(rows)) return [];
-  return rows.map((row) => ({ day: String(row.day ?? ""), events: Number(row.events ?? 0) }));
+  return rows.map((row) => ({
+    day: String(row.day ?? ""),
+    source: String(row.source ?? ""),
+    events: Number(row.events ?? 0),
+  }));
 }
 
 /** One campaign, as our own side of the funnel sees it. */

@@ -62,6 +62,11 @@ h2{font-size:13px;font-weight:600;margin:0 0 14px;letter-spacing:.04em;text-tran
   padding:5px 11px;border-radius:6px;cursor:pointer}
 .range button[aria-pressed=true]{background:var(--plane);color:var(--ink);font-weight:600}
 .range button:hover{color:var(--ink)}
+.picker{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
+.chip{display:inline-block;padding:5px 12px;border:1px solid var(--border);border-radius:20px;
+  font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;background:var(--surface)}
+.chip:hover{color:var(--fg)}
+.chip.on{background:var(--fg);color:var(--surface);border-color:var(--fg)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 22px;margin-bottom:20px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--border);
   border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px}
@@ -146,8 +151,42 @@ function line(daily){
   return s+'</svg>'
 }
 
+/** Суточные строки приходят по продуктам; для линии их надо свернуть по дням. */
+function byDay(rows,pick){
+  var m={},out=[];
+  rows.forEach(function(r){ if(pick&&r.source!==pick) return; m[r.day]=(m[r.day]||0)+r.events });
+  Object.keys(m).sort().forEach(function(d){ out.push({day:d,events:m[d]}) });
+  return out
+}
+
+/**
+ * Кто сейчас выбран. Живёт в адресе, а не в переменной: ссылку на конкретный продукт можно
+ * послать, открыть во второй вкладке и вернуться к ней кнопкой «назад». Состояние фильтра,
+ * которое нельзя показать другому человеку, — это не фильтр, а настройка.
+ */
+function picked(){ return new URLSearchParams(location.search).get('p')||'' }
+
+function pickerHtml(o,cur){
+  var ids=o.stats.sources.map(function(r){return r.source}).filter(function(v,i,a){return a.indexOf(v)===i}).sort();
+  var h='<div class="picker"><a class="chip'+(cur?'':' on')+'" href="'+link('')+'">All products</a>';
+  ids.forEach(function(id){
+    h+='<a class="chip'+(cur===id?' on':'')+'" href="'+link(id)+'">'+esc(id)+'</a>'});
+  return h+'</div>'
+}
+
+/** Ссылка, сохраняющая окно и ключ: терять их при каждом клике — верный способ разлогиниться. */
+function link(p){
+  var q=new URLSearchParams(location.search);
+  if(p) q.set('p',p); else q.delete('p');
+  return '?'+q.toString()
+}
+
 function render(o){
   var st=o.stats,edge=o.coverage.reduce(function(a,c){return a+c.edge_uniques},0);
+  var cur=picked();
+  var rows=st.sources.filter(function(r){return !cur||r.source===cur});
+  if(cur&&!rows.length) cur='';
+  var sum=function(f){return rows.reduce(function(a,r){return a+f(r)},0)};
   document.getElementById('win').textContent='· last '+st.window_days+(st.window_days===1?' day':' days');
 
   var h='';
@@ -158,20 +197,31 @@ function render(o){
   // People come from OUR data, bot-filtered, not from the edge. The edge loses nothing to
   // sampling but counts every scraper: on life2film it reported 20k uniques where two people
   // had actually visited. A filtered undercount beats an unfiltered overcount.
-  var botShare=st.total_events?Math.round(st.total_bot_events/st.total_events*100):0;
+  h+=pickerHtml(o,cur);
+
+  var people=cur?sum(function(r){return r.people_seen}):st.total_people;
+  var views=cur?sum(function(r){return r.page_views}):st.total_page_views;
+  var engaged=cur?sum(function(r){return r.engaged}):st.total_engaged;
+  var bots=cur?sum(function(r){return r.bot_events}):st.total_bot_events;
+  var allEvents=cur?sum(function(r){return r.events}):st.total_events;
+  var botShare=allEvents?Math.round(bots/allEvents*100):0;
   h+='<div class="tiles">'+
-    tile('People',fmt(st.total_people),'ours, bots excluded',true)+
-    tile('Page views',fmt(st.total_page_views),'bots excluded')+
-    tile('Engaged',fmt(st.total_engaged),'scrolled, clicked or typed')+
-    tile('Bot events',fmt(st.total_bot_events),botShare+'% of everything received')+
-    tile('Counters live',o.sites_reporting+' / '+o.sites_total,'registered sites')+
+    tile('People',fmt(people),'ours, bots excluded',true)+
+    tile('Page views',fmt(views),'bots excluded')+
+    tile('Engaged',fmt(engaged),'scrolled, clicked or typed')+
+    tile('Bot events',fmt(bots),botShare+'% of everything received')+
+    (cur?tile('Product',esc(cur),'one of '+o.sites_total+' registered')
+        :tile('Counters live',o.sites_reporting+' / '+o.sites_total,'registered sites'))+
   '</div>';
-  if(o.edge_available) h+='<p class="sub" style="margin:-8px 0 20px">Cloudflare\\u2019s edge saw '+
+  if(o.edge_available&&!cur) h+='<p class="sub" style="margin:-8px 0 20px">Cloudflare\\u2019s edge saw '+
     fmt(edge)+' unique clients over the same window \\u2014 that figure loses nothing to sampling '+
     'but counts scrapers too, so it is an upper bound, not a second opinion.</p>';
 
-  h+='<div class="card"><h2>Events per day</h2>'+line(st.daily)+'</div>';
+  h+='<div class="card"><h2>Events per day</h2>'+line(byDay(st.daily,cur))+'</div>';
 
+  // Покрытие и агенты — про зону целиком, а не про продукт: на одном домене их живёт несколько,
+  // и показывать зонное число рядом с именем одного продукта значит приписать ему чужое.
+  if(!cur){
   h+='<div class="card"><h2>Counter coverage</h2>';
   if(!o.edge_available) h+='<p class="empty">Cloudflare edge analytics unavailable — coverage cannot be judged.</p>';
   else if(!o.coverage.length) h+='<p class="empty">No registered site sits in a Cloudflare zone.</p>';
@@ -189,8 +239,9 @@ function render(o){
       'installed, and read the trend from our own column alone.</p>';
   }
   h+='</div>';
+  }
 
-  if(o.agents&&o.agents.agents.length){
+  if(o.agents&&o.agents.agents.length&&!cur){
     var a=o.agents;
     h+='<div class="card"><h2>AI agents reading '+esc(a.zone)+'</h2>'+
       '<table><thead><tr><th>Agent</th><th>Operator</th><th>Why</th><th class="n">Requests</th></tr></thead><tbody>';
@@ -212,12 +263,13 @@ function render(o){
   // Кампании: единственное место, где наша половина воронки сходится с чужой. Панель рисуется
   // только когда метка вообще встречалась — пустая таблица «кампаний нет» ничего не сообщает
   // тому, кто ни одной ещё не запускал, и просто занимает первый экран.
-  if(st.campaigns&&st.campaigns.length){
+  var camps=(st.campaigns||[]).filter(function(c){return !cur||c.source===cur});
+  if(camps.length){
     h+='<div class="card"><h2>Campaigns</h2>'+
       '<table><thead><tr><th>Campaign</th><th>Source</th><th>Where</th>'+
       '<th class="n">Visits</th><th class="n">Engaged</th><th class="n">Store clicks</th>'+
       '<th class="n">Bots</th></tr></thead><tbody>';
-    st.campaigns.forEach(function(c){
+    camps.forEach(function(c){
       var chan=[c.utm_source,c.utm_medium].filter(Boolean).join(' / ')||'\u2014';
       h+='<tr><td class="name">'+esc(c.utm_campaign)+'</td><td class="sub">'+esc(chan)+'</td>'+
         '<td class="sub">'+esc(c.source)+'</td><td class="n">'+fmt(c.page_views)+'</td>'+
@@ -231,14 +283,14 @@ function render(o){
   }
 
   h+='<div class="card"><h2>Sources</h2>';
-  if(!st.sources.length) h+='<p class="empty">No events in this window.</p>';
+  if(!rows.length) h+='<p class="empty">No events in this window.</p>';
   else{
     h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People</th>'+
        '<th class="n">Page views</th><th class="n">Engaged</th><th class="n">Bot events</th></tr></thead><tbody>';
     // Источники приходят уже сгруппированными по домену. Показываем домен один раз на
     // группу: повторять его в каждой строке — шум, а не структура.
     var lastDomain=null;
-    st.sources.forEach(function(r){
+    rows.forEach(function(r){
       var mostly=r.events>0&&r.bot_events/r.events>0.5;
       if(r.domain&&r.domain!==lastDomain){
         lastDomain=r.domain;
