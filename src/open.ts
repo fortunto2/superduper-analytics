@@ -29,6 +29,7 @@
  * nothing rather than a number that is mostly robots.
  */
 import { SITES } from "./registry.generated";
+import { CHART_CSS, CHART_JS } from "./chart";
 import { fetchStats, type StatsEnv } from "./stats";
 import { fetchAgentTraffic, type AgentTraffic } from "./agents";
 import { listZones, zoneForHost, type ZonesEnv } from "./zones";
@@ -93,6 +94,11 @@ export type OpenReport = {
   /** True when Analytics Engine dropped rows in this window, which makes `people` a floor. */
   sampled: boolean;
   products: OpenProduct[];
+  /**
+   * События по дням и по продуктам — ровно для графика. Только опубликованные продукты: это
+   * тот же список, что в таблице, и ни строкой больше.
+   */
+  daily: { day: string; source: string; events: number }[];
   /** Absent when Cloudflare could not be read — the page then simply omits the block. */
   ai_agents?: OpenAgents;
 };
@@ -109,6 +115,7 @@ export async function buildOpenReport(
     source: "own-counter",
     sampled: false,
     products: [],
+    daily: [],
   };
   if (published.length === 0) return report;
 
@@ -132,6 +139,8 @@ export async function buildOpenReport(
       ai_requests: 0,
     });
   }
+  const publishedIds = new Set(report.products.map((p) => p.id));
+  report.daily = (stats.stats.daily ?? []).filter((row) => publishedIds.has(row.source));
   report.products.sort((a, b) => b.page_views - a.page_views);
 
   // Best-effort, like everywhere else Cloudflare is involved: a public page that shows nothing
@@ -189,6 +198,7 @@ export const OPEN_PAGE = `<!doctype html>
 <title>Open numbers · superduperai</title>
 <meta name="description" content="Traffic for superduperai and its products, published automatically. Nobody types these in.">
 <style>
+${CHART_CSS}
 :root{color-scheme:light;--plane:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;
   --muted:#898781;--grid:#e1e0d9;--border:rgba(11,11,11,.10);--series:#2a78d6}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){color-scheme:dark;
@@ -225,6 +235,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 and nobody can round them up — the page asks the same API the private dashboard does, and the
 numbers are small on purpose: they are people, not requests.</p>
 <div class="card"><div id="t">Loading…</div></div>
+<div class="card" id="c" style="margin-top:20px;display:none">
+  <h2 style="font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px">Events per day</h2>
+  <div id="chart"></div>
+</div>
 
 <div class="method">
   <h2>How these are counted</h2>
@@ -259,6 +273,8 @@ numbers are small on purpose: they are people, not requests.</p>
 </footer>
 </div>
 <script>
+${CHART_JS}
+
 var fmt=function(n){return n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?Math.round(n/1e3)+'k':n.toLocaleString('en-US')};
 var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
 // cache:'no-cache' revalidates with the Worker instead of trusting the browser's copy. The
@@ -285,6 +301,11 @@ fetch('/open.json',{cache:'no-cache'}).then(function(r){return r.json()}).then(f
        d.ai_agents.agents.map(function(a){return esc(a.agent)+' ('+fmt(a.requests)+')'}).join(', ')+'</p>';
   }
   el.innerHTML=h;
+  var ch=sdaChart(d.daily||[],esc,fmt);
+  if(ch.svg){
+    document.getElementById('chart').innerHTML='<div class="chart">'+ch.svg+'</div>'+ch.legend;
+    document.getElementById('c').style.display='';
+  }
   document.getElementById('gen').textContent='Updated '+new Date(d.generated_at).toUTCString()+'.';
 }).catch(function(){document.getElementById('t').textContent='Numbers are temporarily unavailable.'});
 </script>

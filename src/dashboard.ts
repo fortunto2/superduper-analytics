@@ -16,6 +16,7 @@
  * Unique people come from the edge, never from us. Analytics Engine samples, and a sampled-away
  * row takes its `anon` with it — our distinct count is a lower bound and says so.
  */
+import { CHART_CSS, CHART_JS } from "./chart";
 
 export const DASHBOARD_CACHE_SECONDS = 60;
 
@@ -26,6 +27,7 @@ export const DASHBOARD = `<!doctype html>
 <meta name="robots" content="noindex,nofollow">
 <title>superduper analytics</title><link rel="icon" href="/favicon.ico">
 <style>
+${CHART_CSS}
 :root{
   color-scheme:light;
   --plane:#f9f9f7; --surface:#fcfcfb;
@@ -191,6 +193,8 @@ function link(p){
   return '?'+q.toString()
 }
 
+${CHART_JS}
+
 function render(o){
   var st=o.stats,edge=o.coverage.reduce(function(a,c){return a+c.edge_uniques},0);
   var cur=picked();
@@ -236,7 +240,10 @@ function render(o){
     fmt(edge)+' unique clients over the same window \\u2014 that figure loses nothing to sampling '+
     'but counts scrapers too, so it is an upper bound, not a second opinion.</p>';
 
-  h+='<div class="card"><h2>Events per day</h2>'+line(byDay(st.daily,cur))+'</div>';
+  var ch=sdaChart((st.daily||[]).filter(function(r){return !cur||r.source===cur}),esc,fmt);
+  h+='<div class="card"><h2>Events per day</h2>'+
+    (ch.svg?'<div class="chart">'+ch.svg+'</div>'+ch.legend
+           :'<p class="empty">Not enough days yet to draw a trend.</p>')+'</div>';
 
   // Покрытие и агенты — про зону целиком, а не про продукт: на одном домене их живёт несколько,
   // и показывать зонное число рядом с именем одного продукта значит приписать ему чужое.
