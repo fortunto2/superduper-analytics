@@ -307,26 +307,41 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
       }
 
       if (name === "agent_traffic") {
-        if (agents === undefined || agents.agents.length === 0) {
+        if (agents === undefined || agents.length === 0) {
           return toolText(id, "No verified AI agent traffic in the last 24 hours.", version);
         }
         const why = (c: string) =>
           c === "AI Assistant" ? "answering someone" : c === "AI Search" ? "search result" : "indexing";
+
+        // Каждая зона отдельным блоком: складывать их в один список значило бы потерять
+        // ответ на вопрос «кто читает ЭТОТ сайт», ради которого сюда и смотрят.
+        const total = agents.reduce((sum, z) => sum + z.ai_requests, 0);
+        const blocks = agents.map(z =>
+          [
+            `## ${z.zone} — ${z.ai_requests} requests`,
+            ...z.agents.map(
+              a => `- ${a.agent}${a.operator ? ` (${a.operator})` : ""} — ${why(a.category)} — ${a.requests}`,
+            ),
+            z.ai_paths.length > 0
+              ? `They read: ${z.ai_paths.slice(0, 6).map(p => `${p.path} (${p.requests})`).join(", ")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
+
         return toolText(
           id,
           [
-            `${agents.zone}, last 24 hours — ${agents.ai_requests} requests from verified AI agents.`,
+            `Last 24 hours — ${total} requests from verified AI agents across ` +
+              `${agents.length} zone(s).`,
             "",
-            ...agents.agents.map(
-              a => `- ${a.agent}${a.operator ? ` (${a.operator})` : ""} — ${why(a.category)} — ${a.requests}`,
-            ),
-            "",
-            `They read: ${agents.ai_paths.slice(0, 8).map(p => `${p.path} (${p.requests})`).join(", ")}`,
+            ...blocks,
             "",
             "Verified by Cloudflare against each operator's own IP ranges, so a script cannot " +
               "appear here by calling itself ClaudeBot. 24 hours is the widest window this " +
               "dataset allows on the free plan.",
-          ].join("\n"),
+          ].join("\n\n"),
           version,
         );
       }

@@ -241,23 +241,36 @@ function render(o){
   h+='</div>';
   }
 
-  if(o.agents&&o.agents.agents.length&&!cur){
-    var a=o.agents;
-    h+='<div class="card"><h2>AI agents reading '+esc(a.zone)+'</h2>'+
-      '<table><thead><tr><th>Agent</th><th>Operator</th><th>Why</th><th class="n">Requests</th></tr></thead><tbody>';
-    a.agents.forEach(function(x){
-      // An assistant fetching the page means a person asked something; a crawler means an
-      // index is being built. Same traffic, opposite meaning.
-      var why=x.category==='AI Assistant'?'answering someone':x.category==='AI Search'?'search result':'indexing';
-      h+='<tr><td class="name">'+esc(x.agent)+'</td><td class="sub">'+esc(x.operator||'—')+'</td>'+
-        '<td class="sub">'+esc(why)+'</td><td class="n">'+fmt(x.requests)+'</td></tr>'});
+  // Агенты. На общей странице — по всем зонам сразу: она называется общей, а показывала одну,
+  // и у остальных сайтов агенты будто отсутствовали. В срезе продукта остаётся его зона.
+  var zonesOf=function(){
+    var all=o.agents||[];
+    if(!cur) return all;
+    var mine=(o.coverage||[]).filter(function(c){return c.sites.indexOf(cur)>=0}).map(function(c){return c.zone});
+    return all.filter(function(z){return mine.indexOf(z.zone)>=0})
+  }();
+  if(zonesOf.length){
+    var totalAi=zonesOf.reduce(function(a,z){return a+z.ai_requests},0);
+    h+='<div class="card"><h2>AI agents '+(cur?'reading '+esc(zonesOf[0].zone):'across all zones')+'</h2>';
+    // Одна таблица со столбцом зоны вместо восьми таблиц: имена агентов повторяются, и
+    // восемь почти одинаковых списков читаются хуже одного отсортированного.
+    h+='<table><thead><tr><th>Agent</th><th>Operator</th><th>Why</th>'+
+       (cur?'':'<th>Zone</th>')+'<th class="n">Requests</th></tr></thead><tbody>';
+    var flat=[];
+    zonesOf.forEach(function(z){z.agents.forEach(function(x){flat.push({z:z.zone,x:x})})});
+    flat.sort(function(a,b){return b.x.requests-a.x.requests}).slice(0,20).forEach(function(r){
+      var why=r.x.category==='AI Assistant'?'answering someone':r.x.category==='AI Search'?'search result':'indexing';
+      h+='<tr><td class="name">'+esc(r.x.agent)+'</td><td class="sub">'+esc(r.x.operator||'\u2014')+'</td>'+
+        '<td class="sub">'+esc(why)+'</td>'+(cur?'':'<td class="sub">'+esc(r.z)+'</td>')+
+        '<td class="n">'+fmt(r.x.requests)+'</td></tr>'});
     h+='</tbody></table>';
-    if(a.ai_paths.length) h+='<p class="sub" style="margin:14px 0 4px">What they read: '+
-      a.ai_paths.slice(0,6).map(function(p){return esc(p.path)+' ('+p.requests+')'}).join(', ')+'</p>';
-    h+='<p class="sub" style="margin:8px 0 0">Last 24 hours \u2014 the only window this dataset '+
-      'allows on the free plan. Verified by Cloudflare against the agent\u2019s own IP ranges, so '+
-      'a script cannot get listed here by calling itself ClaudeBot. These never reach our own '+
-      'counter: they do not run JavaScript.</p></div>';
+    var paths=zonesOf[0].ai_paths||[];
+    if(cur&&paths.length) h+='<p class="sub" style="margin:14px 0 4px">What they read: '+
+      paths.slice(0,6).map(function(p){return esc(p.path)+' ('+p.requests+')'}).join(', ')+'</p>';
+    h+='<p class="sub" style="margin:8px 0 0">'+fmt(totalAi)+' requests over the last 24 hours \u2014 '+
+      'the only window this dataset allows on the free plan. Verified by Cloudflare against the '+
+      'agent\u2019s own IP ranges, so a script cannot get listed here by calling itself ClaudeBot. '+
+      'These never reach our own counter: they do not run JavaScript.</p></div>';
   }
 
   // Кампании: единственное место, где наша половина воронки сходится с чужой. Панель рисуется
