@@ -3,7 +3,10 @@
  * and no error, so these tests read the query text itself.
  */
 import { describe, expect, it } from "vitest";
-import { buildQuery, fetchStats, parseRows } from "../src/stats";
+import { buildQuery, fetchStats, parseRows,
+  buildCampaignQuery,
+  parseCampaigns,
+} from "../src/stats";
 import { RETENTION_DAYS } from "../src/schema";
 
 const env = { DATASET: "superduper_events", CF_ACCOUNT_ID: "acc", CF_API_TOKEN: "tok" };
@@ -172,5 +175,64 @@ describe("bots are separated, not hidden", () => {
     const row = parseRows({ data: [{ events: "98", bot_events: "88", people_raw: "3" }] })[0];
     expect(row?.bot_events).toBe(88);
     expect(row?.people_seen).toBe(2);
+  });
+});
+
+describe("what each campaign brought", () => {
+  it("counts only tagged visits, and only ones a browser made", () => {
+    const sql = buildCampaignQuery("events", 7);
+    // The tag is the whole filter: an untagged visit is not "campaign none", it is a visit this
+    // table has nothing to say about.
+    expect(sql).toContain("blob14 != ''");
+    // Weighted like everything else here — plain count() returns a smaller number, not an error.
+    expect(sql).toContain("sum(if(blob9 != 'bot' AND blob3 = 'page_viewed', _sample_interval, 0))");
+    // Analytics Engine needs the alias in ORDER BY, not the expression.
+    expect(sql).toContain("ORDER BY page_views DESC");
+  });
+
+  it("keeps bots in their own column instead of dropping the row", () => {
+    // A campaign whose visits are zero and bots are not is a scraped link, not a broken tag.
+    // Those two are indistinguishable if the column is missing.
+    expect(buildCampaignQuery("events", 7)).toContain("AS bot_views");
+  });
+
+  it("refuses a window past retention rather than quietly shortening it", () => {
+    expect(() => buildCampaignQuery("events", 400)).toThrow();
+    expect(() => buildCampaignQuery("events", 0)).toThrow();
+  });
+
+  it("reads the rows Analytics Engine actually returns, numbers as strings and all", () => {
+    const rows = parseCampaigns({
+      data: [
+        {
+          source: "carettafriends",
+          utm_source: "youtube",
+          utm_medium: "shorts",
+          utm_campaign: "nest-01",
+          page_views: "12",
+          engaged: "5",
+          store_clicks: "2",
+          bot_views: "1",
+        },
+      ],
+    });
+    expect(rows).toEqual([
+      {
+        source: "carettafriends",
+        utm_source: "youtube",
+        utm_medium: "shorts",
+        utm_campaign: "nest-01",
+        page_views: 12,
+        engaged: 5,
+        store_clicks: 2,
+        bot_views: 1,
+      },
+    ]);
+  });
+
+  it("survives an empty or malformed payload — a missing panel beats a broken page", () => {
+    expect(parseCampaigns({ data: [] })).toEqual([]);
+    expect(parseCampaigns(null)).toEqual([]);
+    expect(parseCampaigns({})).toEqual([]);
   });
 });

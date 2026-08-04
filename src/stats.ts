@@ -40,6 +40,8 @@ export type SourceTotal = {
 export type DayTotal = { day: string; events: number };
 
 export type Stats = {
+  /** Empty until something is tagged — which is the normal state before the first campaign. */
+  campaigns?: CampaignTotal[];
   window_days: number;
   /** Always true, and stated in the payload so a consumer cannot forget what these are. */
   sampled: true;
@@ -149,6 +151,75 @@ export function parseDays(payload: unknown): DayTotal[] {
   return rows.map((row) => ({ day: String(row.day ?? ""), events: Number(row.events ?? 0) }));
 }
 
+/** One campaign, as our own side of the funnel sees it. */
+export type CampaignTotal = {
+  source: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  /** Visits carrying the tag. Bots excluded — a crawler following a tagged link is not a click. */
+  page_views: number;
+  /** Of those, the ones that scrolled, clicked or typed. The honest denominator for a channel. */
+  engaged: number;
+  /** Clicks on a store button, when the site marks one up with `data-sda-event`. */
+  store_clicks: number;
+  /**
+   * Bots that followed the tagged link. Kept rather than filtered away, because a campaign whose
+   * row is all zeros except this one is not a broken tag — it is a link that got scraped and not
+   * clicked, and those two look identical if the column is missing.
+   */
+  bot_views: number;
+};
+
+/**
+ * What each campaign brought — the question a video or an ad exists to answer.
+ *
+ * Only rows that carry a tag: an untagged visit is not "campaign none", it is a visit that this
+ * table has nothing to say about, and putting it here as a row called '' would make every
+ * channel look tiny next to it.
+ *
+ * `store_clicks` counts `app_store_opened`, which is what the shared snippet fires from
+ * `data-sda-event` markup. That is our last observable step — everything after it is Apple's,
+ * and it joins back by the same tag rather than by any identifier.
+ */
+export function buildCampaignQuery(dataset: string, days: number): string {
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+  }
+  return [
+    "SELECT",
+    "  blob1 AS source,",
+    "  blob12 AS utm_source,",
+    "  blob13 AS utm_medium,",
+    "  blob14 AS utm_campaign,",
+    "  sum(if(blob9 != 'bot' AND blob3 = 'page_viewed', _sample_interval, 0)) AS page_views,",
+    "  sum(if(blob9 != 'bot' AND blob3 = 'page_engaged', _sample_interval, 0)) AS engaged,",
+    "  sum(if(blob9 != 'bot' AND blob3 = 'app_store_opened', _sample_interval, 0)) AS store_clicks,",
+    "  sum(if(blob9 = 'bot', _sample_interval, 0)) AS bot_views",
+    `FROM ${dataset}`,
+    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob14 != ''`,
+    "GROUP BY source, utm_source, utm_medium, utm_campaign",
+    "ORDER BY page_views DESC",
+    "LIMIT 50",
+    "FORMAT JSON",
+  ].join("\n");
+}
+
+export function parseCampaigns(payload: unknown): CampaignTotal[] {
+  const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    source: String(row.source ?? ""),
+    utm_source: String(row.utm_source ?? ""),
+    utm_medium: String(row.utm_medium ?? ""),
+    utm_campaign: String(row.utm_campaign ?? ""),
+    page_views: Number(row.page_views ?? 0),
+    engaged: Number(row.engaged ?? 0),
+    store_clicks: Number(row.store_clicks ?? 0),
+    bot_views: Number(row.bot_views ?? 0),
+  }));
+}
+
 export type StatsEnv = {
   DATASET: string;
   CF_ACCOUNT_ID?: string;
@@ -194,9 +265,10 @@ export async function fetchStats(
       body: sql,
     });
 
-  const [totals, daily] = await Promise.all([
+  const [totals, daily, campaigns] = await Promise.all([
     ask(buildQuery(env.DATASET, days)),
     ask(buildDailyQuery(env.DATASET, days)),
+    ask(buildCampaignQuery(env.DATASET, days)),
   ]);
 
   if (!totals.ok) {
@@ -226,6 +298,7 @@ export async function fetchStats(
       sources,
       // The trend is decoration next to the totals: if it fails, show the numbers anyway.
       daily: daily.ok ? parseDays(await daily.json()) : [],
+      campaigns: campaigns.ok ? parseCampaigns(await campaigns.json()) : [],
     },
   };
 }

@@ -24,7 +24,7 @@ export const DASHBOARD = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>superduper analytics</title>
+<title>superduper analytics</title><link rel="icon" href="/favicon.ico">
 <style>
 :root{
   color-scheme:light;
@@ -207,6 +207,27 @@ function render(o){
       'allows on the free plan. Verified by Cloudflare against the agent\u2019s own IP ranges, so '+
       'a script cannot get listed here by calling itself ClaudeBot. These never reach our own '+
       'counter: they do not run JavaScript.</p></div>';
+  }
+
+  // Кампании: единственное место, где наша половина воронки сходится с чужой. Панель рисуется
+  // только когда метка вообще встречалась — пустая таблица «кампаний нет» ничего не сообщает
+  // тому, кто ни одной ещё не запускал, и просто занимает первый экран.
+  if(st.campaigns&&st.campaigns.length){
+    h+='<div class="card"><h2>Campaigns</h2>'+
+      '<table><thead><tr><th>Campaign</th><th>Source</th><th>Where</th>'+
+      '<th class="n">Visits</th><th class="n">Engaged</th><th class="n">Store clicks</th>'+
+      '<th class="n">Bots</th></tr></thead><tbody>';
+    st.campaigns.forEach(function(c){
+      var chan=[c.utm_source,c.utm_medium].filter(Boolean).join(' / ')||'\u2014';
+      h+='<tr><td class="name">'+esc(c.utm_campaign)+'</td><td class="sub">'+esc(chan)+'</td>'+
+        '<td class="sub">'+esc(c.source)+'</td><td class="n">'+fmt(c.page_views)+'</td>'+
+        '<td class="n">'+fmt(c.engaged)+'</td><td class="n">'+fmt(c.store_clicks)+'</td>'+
+        '<td class="n'+(c.bot_views?' warn':'')+'">'+fmt(c.bot_views)+'</td></tr>'});
+    h+='</tbody></table><p class="sub" style="margin:14px 0 0">Only visits carrying a '+
+      '<code>utm_campaign</code> tag. A row with visits at zero and bots above it is not a broken '+
+      'tag \u2014 it is a link that got scraped rather than clicked. Store clicks are our last '+
+      'observable step: what happens after belongs to Apple, and joins back by this same tag '+
+      'rather than by any identifier.</p></div>';
   }
 
   h+='<div class="card"><h2>Sources</h2>';

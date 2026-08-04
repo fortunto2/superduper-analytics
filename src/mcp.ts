@@ -64,6 +64,17 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
   },
   {
+    name: "campaigns",
+    title: "What each campaign brought",
+    description:
+      "Visits, engaged visits and store-button clicks for every campaign tag seen in the " +
+      "window — one row per utm_campaign. This is OUR half of the funnel and it stops at the " +
+      "store click; installs and revenue live in App Store Connect and join back by the same " +
+      "tag, never by an identifier. A row whose visits are zero while bots are not is a link " +
+      "that got scraped rather than clicked, not a broken tag. Empty until something is tagged.",
+    inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
+  },
+  {
     name: "agent_traffic",
     title: "Which AI agents read the sites",
     description:
@@ -233,6 +244,38 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             "here to fake, and the best proxy for a person rather than a script.",
         ];
         return toolText(id, text.join("\n"), version);
+      }
+
+      if (name === "campaigns") {
+        const list = stats.campaigns ?? [];
+        if (list.length === 0) {
+          return toolText(
+            id,
+            `No campaign tags in the last ${days} day(s). Nothing is broken — a visit is only ` +
+              "counted here when its link carried a utm_campaign tag, so this stays empty until " +
+              "the first tagged link is published.",
+            version,
+          );
+        }
+        const rows = list.map(c => {
+          const channel = [c.utm_source, c.utm_medium].filter(Boolean).join(" / ") || "unknown";
+          return (
+            `- ${c.utm_campaign} (${channel}) on ${c.source} — visits ${c.page_views}, ` +
+            `engaged ${c.engaged}, store clicks ${c.store_clicks}, bots ${c.bot_views}`
+          );
+        });
+        return toolText(
+          id,
+          [
+            `Last ${days} day(s), ${list.length} campaign tag(s).`,
+            "",
+            ...rows,
+            "",
+            "Store clicks are the last step we can see. What follows — product page views, " +
+              "installs, purchases — is attributed by Apple to the same tag, aggregate only.",
+          ].join("\n"),
+          version,
+        );
       }
 
       if (name === "counter_coverage") {

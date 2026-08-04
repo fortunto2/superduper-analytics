@@ -65,12 +65,13 @@ describe("the protocol", () => {
 });
 
 describe("tools", () => {
-  it("offers exactly the four it can back with real data", async () => {
+  it("offers exactly the five it can back with real data", async () => {
     const body = (await (await post({ jsonrpc: "2.0", id: 4, method: "tools/list" }, auth)).json()) as {
       result: { tools: { name: string }[] };
     };
     expect(body.result.tools.map(t => t.name).sort()).toEqual([
       "agent_traffic",
+      "campaigns",
       "counter_coverage",
       "list_products",
       "traffic",

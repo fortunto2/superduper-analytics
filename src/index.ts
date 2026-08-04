@@ -135,6 +135,24 @@ app.get("/", (c) => {
 app.get("/health", (c) => c.json({ ok: true, stage: "ingest" }));
 
 /**
+ * A favicon, so every dashboard load stops logging a 404 against itself. An SVG in the source
+ * rather than a binary in a bucket: it is nine bytes of shape, and a Worker that needs an asset
+ * pipeline to draw a square has the wrong kind of dependency.
+ */
+const FAVICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+  '<rect width="32" height="32" rx="7" fill="#111"/>' +
+  '<rect x="7" y="17" width="4" height="8" fill="#fff"/>' +
+  '<rect x="14" y="12" width="4" height="13" fill="#fff"/>' +
+  '<rect x="21" y="7" width="4" height="18" fill="#fff"/></svg>';
+
+app.get("/favicon.ico", (c) => {
+  c.header("content-type", "image/svg+xml");
+  c.header("cache-control", "public, max-age=604800");
+  return c.body(FAVICON);
+});
+
+/**
  * The web snippet. Served from here so the thirteen sites embed a URL once and never need
  * editing again — every later change to how a browser reports is a deploy.
  */
