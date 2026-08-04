@@ -129,9 +129,9 @@ export async function rollupPages(
   if (rows.length === 0) return { day, rows: 0, note: "no pages" };
 
   const statement = env.STORES.prepare(
-    `INSERT INTO page_daily (day, source, path, page_views, engaged, rolled)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (day, source, path)
+    `INSERT INTO page_daily (day, source, provider, path, page_views, engaged, rolled)
+     VALUES (?, ?, 'own', ?, ?, ?, ?)
+     ON CONFLICT (day, source, provider, path)
      DO UPDATE SET page_views = excluded.page_views, engaged = excluded.engaged, rolled = excluded.rolled`,
   );
   await env.STORES.batch(

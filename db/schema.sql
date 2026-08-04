@@ -116,10 +116,17 @@ CREATE TABLE IF NOT EXISTS page_daily (
   day        TEXT NOT NULL,
   source     TEXT NOT NULL,
   path       TEXT NOT NULL,
+  -- Чей счётчик: 'own' — наш, 'ga4' — Google Analytics. В ключе, а не рядом с ним, потому что
+  -- за один и тот же день у одной и той же страницы будут ДВА разных числа, и оба верные.
+  --
+  -- Совпадать они не будут и не должны: GA считает своим счётчиком, с блокировщиками и своим
+  -- определением сеанса; наш — без кук и с сэмплированием. Складывать их — ошибка того же рода,
+  -- что складывать установки Apple с визитами на лендинг. Показывать рядом можно, в сумму нельзя.
+  provider   TEXT NOT NULL DEFAULT 'own',
   page_views REAL NOT NULL,
   engaged    REAL NOT NULL,
   rolled     INTEGER NOT NULL,
-  PRIMARY KEY (day, source, path)
+  PRIMARY KEY (day, source, provider, path)
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS page_daily_source_day ON page_daily (source, day);
