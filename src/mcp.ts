@@ -86,6 +86,17 @@ const TOOLS = [
     inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
   },
   {
+    name: "search",
+    title: "Where Google shows us, and at what rank",
+    description:
+      "Search Console queries for a window: impressions, clicks, CTR and average position per " +
+      "product. The ONLY leading indicator here — everything else reports what already " +
+      "happened, this says where growth is available. A query ranking in the top twenty with " +
+      "impressions and almost no clicks is a title-and-description problem, not a traffic " +
+      "problem, and is the cheapest thing to fix. Data lags Google by two to three days.",
+    inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
+  },
+  {
     name: "agent_traffic",
     title: "Which AI agents read the sites",
     description:
@@ -290,6 +301,36 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             "",
             "Store clicks are the last step we can see. What follows — product page views, " +
               "installs, purchases — is attributed by Apple to the same tag, aggregate only.",
+          ].join("\n"),
+          version,
+        );
+      }
+
+      if (name === "search") {
+        const rows = result.overview.search ?? [];
+        if (rows.length === 0) {
+          return toolText(
+            id,
+            "No Search Console data in this window. Either the daily job has not run yet or " +
+              "Google has nothing for these days — it lags two to three days.",
+            version,
+          );
+        }
+        const line = (r: { site: string; key: string; clicks: number; impressions: number; position: number }) => {
+          const ctr = r.impressions > 0 ? (r.clicks / r.impressions) * 100 : 0;
+          const reach = r.position <= 20 && r.impressions >= 5 && ctr < 2 ? "  <-- ranks but no clicks" : "";
+          return `- "${r.key}" (${r.site}) — ${Math.round(r.impressions)} impressions, ` +
+            `${Math.round(r.clicks)} clicks, CTR ${ctr.toFixed(1)}%, position ${r.position.toFixed(1)}${reach}`;
+        };
+        return toolText(
+          id,
+          [
+            `Last ${days} day(s), shifted back three to match Google's lag.`,
+            "",
+            ...rows.slice(0, 25).map(line),
+            "",
+            "Position is weighted by impressions. Rows marked as ranking without clicks are " +
+              "title and description work, not content work.",
           ].join("\n"),
           version,
         );

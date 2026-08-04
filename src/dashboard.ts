@@ -367,6 +367,32 @@ function render(o){
     'Direct visits are absent by definition \u2014 they carry no referrer, and a row for them '+
     'would read as \u201csource unknown\u201d rather than \u201cthere was no source\u201d. Only '+
     'the HOST is kept: a full referrer carries other people\u2019s search queries and tokens.');
+  // Поиск — единственный опережающий блок на странице, поэтому стоит ВЫШЕ остальных разрезов:
+  // «где нас показывают и не кликают» это план на следующую неделю, а не отчёт за прошлую.
+  var srch=(o.search||[]).filter(function(r){return !cur||r.site===cur});
+  if(srch.length){
+    h+='<div class="card"><h2>Search: where we appear</h2><table><thead><tr><th>Query</th>'+
+      (cur?'':'<th>Product</th>')+'<th class="n">Impressions</th><th class="n">Clicks</th>'+
+      '<th class="n">CTR</th><th class="n">Position</th></tr></thead><tbody>';
+    srch.slice(0,15).forEach(function(r){
+      var ctr=r.impressions>0?r.clicks/r.impressions*100:0;
+      // Показывают высоко и не кликают — это правится заголовком, а не новой статьёй, и это
+      // самая дешёвая работа во всей таблице. Поэтому она подсвечена.
+      var reach=r.position<=20&&r.impressions>=5&&ctr<2;
+      h+='<tr><td class="name">'+esc(r.key)+'</td>'+
+        (cur?'':'<td class="sub">'+esc(r.site)+'</td>')+
+        '<td class="n">'+fmt(Math.round(r.impressions))+'</td>'+
+        '<td class="n">'+fmt(Math.round(r.clicks))+'</td>'+
+        '<td class="n"'+(reach?' style="color:var(--warn)"':'')+'>'+ctr.toFixed(1)+'%</td>'+
+        '<td class="n">'+r.position.toFixed(1)+'</td></tr>'});
+    h+='</tbody></table><p class="sub" style="margin:14px 0 0">From Google Search Console, '+
+      'lagging two to three days \u2014 the window here is shifted back to match, not truncated. '+
+      'Position is averaged WEIGHTED by impressions: one impression at rank 90 would otherwise '+
+      'drag a site down as hard as three hundred at rank 4. Amber CTR marks a query that ranks '+
+      'in the top twenty and still gets almost no clicks \u2014 that is a title and description '+
+      'problem, which is the cheapest work on this page.</p></div>';
+  }
+
   h+=half('Where in the world',st.countries,'Country',
     'From Cloudflare\u2019s edge, never from the browser. Country only \u2014 a city would '+
     'narrow a thirty-visitor week to something identifiable, which is the line past which a '+

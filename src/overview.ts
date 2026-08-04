@@ -8,6 +8,7 @@
  */
 import { fetchAgentTraffic, type AgentTraffic } from "./agents";
 import { SITES } from "./registry.generated";
+import { readSearch, type SearchTotal } from "./search/sync";
 import { readTotals, type StoreTotal } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
 
@@ -59,6 +60,13 @@ export type Overview = {
    * определением суток. Пусто, пока ключ App Store Connect не умеет читать отчёты.
    */
   stores?: StoreTotal[];
+  /**
+   * Search Console: по каким запросам нас показывают и на каком месте.
+   *
+   * Единственный ОПЕРЕЖАЮЩИЙ показатель на этой странице. Всё остальное отвечает, что уже
+   * случилось; этот — сколько раз нас показали и не кликнули, то есть где рост.
+   */
+  search?: SearchTotal[];
 };
 
 export type OverviewEnv = StatsEnv & ZonesEnv & { STORES?: D1Database };
@@ -100,6 +108,18 @@ export async function fetchOverview(
     return { zones, totals: registered, agents };
   })();
 
+  // Окно поиска сдвинуто: консоль отдаёт данные с отставанием в два-три дня, и запрос за
+  // «последние 7 дней, считая сегодня» вернул бы три пустых дня и заниженные итоги.
+  const searchPromise = (async (): Promise<SearchTotal[]> => {
+    if (env.STORES === undefined) return [];
+    const to = dayBefore(utcDay(now), 3);
+    try {
+      return await readSearch(env.STORES, "query", dayBefore(to, Math.max(1, days) - 1), to);
+    } catch {
+      return [];
+    }
+  })();
+
   const storesPromise = (async (): Promise<StoreTotal[]> => {
     if (env.STORES === undefined) return [];
     const to = dayBefore(utcDay(now), 1);
@@ -113,9 +133,10 @@ export async function fetchOverview(
 
   // Край — best-effort: дашборд, показавший ничего из-за икоты чужого GraphQL, хуже дашборда,
   // который показал наши числа и честно сказал, что второй половины нет.
-  const [stats, stores, edgeResult] = await Promise.all([
+  const [stats, stores, search, edgeResult] = await Promise.all([
     fetchStats(env, days),
     storesPromise,
+    searchPromise,
     edge.catch(() => null),
   ]);
   if (!stats.ok) return stats;
@@ -200,6 +221,7 @@ export async function fetchOverview(
       sites_total: LIVE_SITES.length,
       sites_reporting: LIVE_SITES.filter((s) => reporting.has(s.id)).length,
       stores,
+      search,
     },
   };
 }

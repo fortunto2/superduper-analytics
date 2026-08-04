@@ -65,7 +65,7 @@ describe("the protocol", () => {
 });
 
 describe("tools", () => {
-  it("offers exactly the six it can back with real data", async () => {
+  it("offers exactly the seven it can back with real data", async () => {
     const body = (await (await post({ jsonrpc: "2.0", id: 4, method: "tools/list" }, auth)).json()) as {
       result: { tools: { name: string }[] };
     };
@@ -75,6 +75,7 @@ describe("tools", () => {
       "content",
       "counter_coverage",
       "list_products",
+      "search",
       "traffic",
     ]);
   });
