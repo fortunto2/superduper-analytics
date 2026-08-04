@@ -367,6 +367,10 @@ function render(o){
     'Direct visits are absent by definition \u2014 they carry no referrer, and a row for them '+
     'would read as \u201csource unknown\u201d rather than \u201cthere was no source\u201d. Only '+
     'the HOST is kept: a full referrer carries other people\u2019s search queries and tokens.');
+  h+=half('Where in the world',st.countries,'Country',
+    'From Cloudflare\u2019s edge, never from the browser. Country only \u2014 a city would '+
+    'narrow a thirty-visitor week to something identifiable, which is the line past which a '+
+    'counter stops being anonymous.');
   h+=half('What they read',st.pages,'Page',
     'Query strings are stripped before storage, so a page appears once however it was linked.');
 

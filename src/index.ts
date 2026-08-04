@@ -55,8 +55,15 @@ export function isInternal(list: string | undefined, ip: string | undefined): bo
 /** A week is the question that gets asked; anything else is an explicit `?days=`. */
 const DEFAULT_WINDOW_DAYS = 7;
 
-/** Long enough to survive a refresh storm, short enough that "now" still means now. */
-const STATS_CACHE_SECONDS = 60;
+/**
+ * Long enough to survive a refresh storm, short enough that "now" still means now.
+ *
+ * Two minutes rather than one since the overview grew to six SQL queries: reads are metered at
+ * 10k/day on the free plan, which is one full recompute every 52 seconds sustained. A dashboard
+ * left open on a second monitor is exactly the thing that would spend that budget on a number
+ * which has not changed.
+ */
+const STATS_CACHE_SECONDS = 120;
 
 /**
  * Cache keys carry the deployment id, so shipping new code invalidates every cached response

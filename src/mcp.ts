@@ -78,8 +78,9 @@ const TOOLS = [
     name: "content",
     title: "Where visitors came from and what they read",
     description:
-      "Two breakdowns for a window: referrer hosts (where visits came from) and paths (what " +
-      "was read), both bot-filtered. Direct visits carry no referrer and are absent from the " +
+      "Three breakdowns for a window: referrer hosts (where visits came from), paths (what was " +
+      "read) and countries, all bot-filtered. Country comes from Cloudflare's edge, never the " +
+      "browser, and stops at country: a city would identify people on a site this size. Direct visits carry no referrer and are absent from the " +
       "first list by definition — their absence is not a gap. Only the referrer HOST is kept, " +
       "never the full URL, so search queries and other sites' tokens never enter the store.",
     inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
@@ -311,6 +312,11 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             "",
             "## What they read",
             ...(pages.length > 0 ? top(pages) : ["No page views in this window."]),
+            "",
+            "## Where in the world",
+            ...((stats.countries ?? []).length > 0
+              ? top(stats.countries ?? [])
+              : ["No country data — the edge did not report one."]),
           ].join("\n"),
           version,
         );

@@ -53,6 +53,8 @@ export type Stats = {
   referrers?: Breakdown[];
   /** Что читали — пути. */
   pages?: Breakdown[];
+  /** Откуда географически — страна с края. */
+  countries?: Breakdown[];
   window_days: number;
   /** Always true, and stated in the payload so a consumer cannot forget what these are. */
   sampled: true;
@@ -253,6 +255,16 @@ export function buildReferrerQuery(dataset: string, days: number): string {
   return breakdown(dataset, days, "blob5", "AND blob5 != ''");
 }
 
+/**
+ * Откуда географически: страна с края, из `request.cf`, а не со слов клиента.
+ *
+ * Страна, а не город и не координаты. Город сузил бы круг до опознаваемого на сайте с тридцатью
+ * посетителями в неделю, и это ровно та граница, за которой счётчик перестаёт быть анонимным.
+ */
+export function buildCountryQuery(dataset: string, days: number): string {
+  return breakdown(dataset, days, "blob6", "AND blob6 != ''");
+}
+
 /** Что читали: путь без строки запроса — её срезает ingest, и в слот она не попадает. */
 export function buildPagesQuery(dataset: string, days: number): string {
   return breakdown(dataset, days, "blob4", "AND blob4 != ''");
@@ -335,12 +347,17 @@ export async function fetchStats(
       body: sql,
     });
 
-  const [totals, daily, campaigns, referrers, pages] = await Promise.all([
+  // ШЕСТЬ запросов на один обзор, и это не бесплатно: чтения метрятся, 10k в сутки на free.
+  // Арифметика: 10000 / 6 ≈ 1660 расчётов в сутки, то есть один раз в 52 секунды непрерывно.
+  // Поэтому кэш обзора поднят до двух минут — открытая на втором мониторе панель иначе съедала
+  // бы бюджет на числе, которое не изменилось.
+  const [totals, daily, campaigns, referrers, pages, countries] = await Promise.all([
     ask(buildQuery(env.DATASET, days)),
     ask(buildDailyQuery(env.DATASET, days)),
     ask(buildCampaignQuery(env.DATASET, days)),
     ask(buildReferrerQuery(env.DATASET, days)),
     ask(buildPagesQuery(env.DATASET, days)),
+    ask(buildCountryQuery(env.DATASET, days)),
   ]);
 
   if (!totals.ok) {
@@ -373,6 +390,7 @@ export async function fetchStats(
       campaigns: campaigns.ok ? parseCampaigns(await campaigns.json()) : [],
       referrers: referrers.ok ? parseBreakdown(await referrers.json()) : [],
       pages: pages.ok ? parseBreakdown(await pages.json()) : [],
+      countries: countries.ok ? parseBreakdown(await countries.json()) : [],
     },
   };
 }
