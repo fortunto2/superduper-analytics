@@ -8,8 +8,10 @@
  * `GET /feed` с ключом на источник: она работала, но требовала от потребителя двух секретов,
  * а от нас — их выдачи, хранения и отзыва. Ничего из этого больше не существует.
  */
-import { askSql, buildPagesQuery, parseBreakdown, type StatsEnv } from "./stats";
 import { RETENTION_DAYS } from "./schema";
+import { askSql, buildPagesQuery, parseBreakdown, type StatsEnv } from "./stats";
+
+import { readPagesForSource } from "./rollup";
 import { LAG_DAYS, readSearch } from "./search/sync";
 import { dayBefore, utcDay } from "./stores/schema";
 
@@ -19,6 +21,9 @@ import { dayBefore, utcDay } from "./stores/schema";
  */
 const FEED_ROW_LIMIT = 1000;
 
+/** Насколько глубоко можно спросить. Google Analytics хранит около четырнадцати месяцев. */
+const MAX_FEED_DAYS = 400;
+
 export type FeedEnv = StatsEnv & { STORES?: D1Database };
 
 export type FeedPage = {
@@ -26,7 +31,13 @@ export type FeedPage = {
   /** Наши: боты исключены, взвешено. */
   page_views: number;
   engaged: number;
-  /** Google: показы в выдаче и средняя позиция. НЕ складывать с нашими — разные события. */
+  /**
+   * Google Analytics: просмотры её счётчиком. Отдельным полем, а не в сумме с нашими — это
+   * ДРУГОЙ счётчик, с блокировщиками и своим определением сеанса. Единственный источник за
+   * пределами 90 дней: наше хранилище событий к тому времени уже стёрло исходник.
+   */
+  ga_page_views: number;
+  /** Google Search Console: показы в выдаче и средняя позиция. */
   impressions: number;
   clicks: number;
   position: number;
@@ -72,7 +83,11 @@ export async function buildFeed(
   days: number,
   now: number,
 ): Promise<FeedResult> {
-  const window = Math.min(Math.max(1, Math.trunc(days)), RETENTION_DAYS);
+  // Потолок по АРХИВУ, а не по хранилищу событий. RETENTION_DAYS здесь означал бы, что за
+  // прошлый март ответа нет — при том, что Google Analytics отдаёт годы, и они уже лежат в D1.
+  // Своя половина за пределом 90 дней всё равно придёт нулями: там её просто нет, и это видно
+  // по колонкам, а не спрятано в урезанном окне.
+  const window = Math.min(Math.max(1, Math.trunc(days)), MAX_FEED_DAYS);
   const to = utcDay(now);
   const result: FeedResult = {
     source,
@@ -87,7 +102,7 @@ export async function buildFeed(
     const key = normalisePath(path);
     let row = merged.get(key);
     if (row === undefined) {
-      row = { path: key, page_views: 0, engaged: 0, impressions: 0, clicks: 0, position: 0 };
+      row = { path: key, page_views: 0, engaged: 0, ga_page_views: 0, impressions: 0, clicks: 0, position: 0 };
       merged.set(key, row);
     }
     return row;
@@ -98,7 +113,9 @@ export async function buildFeed(
   // фид, неотличимый от «его никто не читал». Ровно эта ошибка уже была найдена и исправлена
   // в readSearch по D1 — здесь она оставалась в той же функции.
   if (env.CF_ACCOUNT_ID !== undefined && env.CF_API_TOKEN !== undefined) {
-    const response = await askSql(env, buildPagesQuery(env.DATASET, window, FEED_ROW_LIMIT));
+    // Хранилище событий держит 90 дней — просить больше бессмысленно и оно откажет.
+    const aeWindow = Math.min(window, RETENTION_DAYS);
+    const response = await askSql(env, buildPagesQuery(env.DATASET, aeWindow, FEED_ROW_LIMIT));
     if (response.ok) {
       for (const row of parseBreakdown(await response.json())) {
         if (row.source !== source) continue;
@@ -106,6 +123,21 @@ export async function buildFeed(
         page.page_views += row.page_views;
         page.engaged += row.engaged;
       }
+    }
+  }
+
+  // Архив. Наш счётчик пишет в хранилище событий 90 дней, Google Analytics — за годы, и
+  // именно архив отвечает на «что читали в прошлом марте». Своя половина отсюда не берётся:
+  // за свежие дни хранилище событий точнее, оно видит сегодняшний день, которого в свёртке
+  // ещё нет.
+  if (env.STORES !== undefined) {
+    try {
+      for (const row of await readPagesForSource(env.STORES, source, result.from, result.to)) {
+        if (row.provider !== "ga4") continue;
+        at(row.path).ga_page_views += row.page_views;
+      }
+    } catch {
+      // Нет архива — остаются наши колонки.
     }
   }
 
@@ -134,8 +166,13 @@ export async function buildFeed(
   }
 
   result.pages = [...merged.values()]
-    .filter((p) => p.path !== "" && (p.page_views > 0 || p.impressions > 0))
-    .sort((a, b) => b.page_views - a.page_views || b.impressions - a.impressions)
+    .filter((p) => p.path !== "" && (p.page_views > 0 || p.ga_page_views > 0 || p.impressions > 0))
+    .sort(
+      (a, b) =>
+        b.page_views - a.page_views ||
+        b.ga_page_views - a.ga_page_views ||
+        b.impressions - a.impressions,
+    )
     .slice(0, 200);
   return result;
 }

@@ -161,6 +161,36 @@ export async function readPageHistory(
   return results;
 }
 
+/** Просмотры одной страницы одним счётчиком за окно. */
+export type PageTotal = { path: string; provider: string; page_views: number; engaged: number };
+
+/**
+ * Постраничные суммы одного продукта из архива.
+ *
+ * Фильтр по источнику — в SQL, а не после выборки. Тот же урок, что дважды стоил пустых
+ * таблиц: LIMIT срезает строки ДО фильтра, и сайт вне общей верхушки получает нули,
+ * неотличимые от «его никто не читал».
+ */
+export async function readPagesForSource(
+  db: D1Database,
+  source: string,
+  from: string,
+  to: string,
+): Promise<PageTotal[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT path, provider, SUM(page_views) AS page_views, SUM(engaged) AS engaged
+         FROM page_daily
+        WHERE source = ? AND day >= ? AND day <= ?
+     GROUP BY path, provider
+     ORDER BY page_views DESC
+        LIMIT 400`,
+    )
+    .bind(source, from, to)
+    .all<PageTotal>();
+  return results;
+}
+
 export type OwnDaily = { day: string; source: string; platform: string; value: number };
 
 /** История одной метрики по продуктам. Отвечает и за пределами 90 дней — в этом весь смысл. */
