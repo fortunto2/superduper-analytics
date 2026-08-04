@@ -15,8 +15,9 @@ gen: ## regenerate code from the registry and from wrangler.jsonc
 	pnpm tsx cli/main.ts gen --registry registry/sources.yaml
 	pnpm wrangler types --path=worker-configuration.d.ts
 
-check: ## validate the registry and that generated code is not stale
+check: ## validate the registry, generated code and the snippet budget
 	pnpm tsx cli/main.ts check --registry registry/sources.yaml
+	node cli/size.mjs
 
 dev: gen ## local Worker on :8787
 	pnpm wrangler dev

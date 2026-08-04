@@ -29,12 +29,16 @@ describe("the snippet as shipped", () => {
   // right: compression forgives repetition, so a careless copy-paste is nearly free in gzip
   // and obvious in the raw count. But it is a guard, not the budget — pinned at 2047 of 2048
   // it stopped guarding anything and just blocked the next edit.
-  it("costs the visitor under 1.2 KB — the size that is actually downloaded", async () => {
+  // Настоящий бюджет — brotli, и он проверяется в `make check`: внутри workerd brotli не
+  // измерить, там есть только gzip. Здесь остаётся сторож от резкого роста, а не бюджет:
+  // gzip платит примерно на 15% больше brotli, и требовать от него того же числа — значит
+  // запрещать то, чего посетитель не платит.
+  it("does not balloon: gzip stays a sane multiple of what brotli actually ships", async () => {
     const gz = new Response(
       new Blob([SNIPPET]).stream().pipeThrough(new CompressionStream("gzip")),
     );
     const bytes = (await gz.arrayBuffer()).byteLength;
-    expect(bytes).toBeLessThan(1200);
+    expect(bytes).toBeLessThan(1400);
   });
 
   it("stays under 2.5 KB raw, so nothing careless creeps in under cover of compression", () => {

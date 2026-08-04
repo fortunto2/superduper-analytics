@@ -50,6 +50,12 @@
  * localStorage, so the rule that keeps the consent banner away is untouched. The rest of the
  * query string is never sent, because that is where reset tokens and email addresses live.
  *
+ * A FILE LINK IS A GOAL WITHOUT MARKUP. A click on a link ending in pdf, dmg, zip and the
+ * like fires `file_downloaded` with the extension as placement — no attribute needed, which
+ * matters because half these downloads live inside markdown, where attributes cannot go. The
+ * marked-up path wins when both apply: an explicit `data-sda-event` says what the author meant,
+ * and guessing over it would be rude.
+ *
  * CLICKS ARE MARKUP, NOT CODE. A `data-sda-event` attribute anywhere on the page is reported
  * on click, with `data-sda-placement` as a prop. Thirteen sites would otherwise each grow
  * their own copy of the same four-line listener, and the outbound click — the store button,
@@ -74,7 +80,7 @@
 
 /** Bumped when the served snippet changes. It is the ETag, so a stale browser revalidates
  * with a 304 instead of downloading the string again — see the /sda.js route. */
-export const SNIPPET_VERSION = "3";
+export const SNIPPET_VERSION = "4";
 
 /** An hour: long enough to be free in practice, short enough that a fix lands the same day. */
 export const SNIPPET_CACHE_SECONDS = 3600;
@@ -90,6 +96,7 @@ if(!src){console.warn("[sda] missing data-source");return}
 var api=(s&&s.dataset.endpoint)||"https://analytics.superduperai.co/e";
 var ver=(s&&s.dataset.version)||undefined;
 var buf=[],timer,queued=w.sda&&w.sda.q,engaged;
+var FILES=/[.](pdf|zip|dmg|exe|pkg|apk)$/i;
 var nav=navigator,ua=nav.userAgent||"";
 var auto=!!(nav.webdriver||/HeadlessChrome|PhantomJS|Electron/i.test(ua))||undefined;
 function path(){return location.pathname||"/"}
@@ -118,7 +125,10 @@ w.addEventListener(e,engage,{passive:true})
 });
 d.addEventListener("click",function(e){
 var t=e.target,c=t&&t.closest&&t.closest("[data-sda-event]"),a=c&&c.dataset;
-if(a)push(a.sdaEvent,{placement:a.sdaPlacement||"unknown"})
+if(a)return push(a.sdaEvent,{placement:a.sdaPlacement||"unknown"});
+var l=t&&t.closest&&t.closest("a[href]"),u=l&&l.getAttribute("href")||"";
+var m=u.split("?")[0].match(FILES);
+if(m)push("file_downloaded",{placement:m[0].slice(1)})
 },true);
 d.addEventListener("visibilitychange",function(){if(d.hidden)flush()});
 w.addEventListener("pagehide",flush);
