@@ -6,6 +6,9 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import schemaSql from "../db/schema.sql?raw";
+import { findSilent, readOwnHistory } from "../src/rollup";
+import { RETENTION_DAYS } from "../src/schema";
+import { buildQuery } from "../src/stats";
 import { parseSalesReport } from "../src/stores/appstore";
 import { readCampaigns, readTotals, readSync, writeRows, writeSync } from "../src/stores/db";
 import { dayBefore, daysBetween, utcDay, type StoreRow } from "../src/stores/schema";
@@ -185,6 +188,7 @@ const row = (over: Partial<StoreRow> = {}): StoreRow => ({
 
 describe("storing them", () => {
   beforeEach(async () => {
+    await env.STORES.exec("DROP TABLE IF EXISTS own_daily");
     await env.STORES.exec("DROP TABLE IF EXISTS store_daily");
     await env.STORES.exec("DROP TABLE IF EXISTS store_sync");
     // One statement per exec: D1's exec takes a single statement, and the schema is the source
@@ -243,5 +247,46 @@ describe("storing them", () => {
     );
     await writeSync(env.STORES, "appstore", new Map([["carettafriends", "2026-08-02"]]), 2);
     expect((await readSync(env.STORES, "appstore")).get("carettafriends")).toBe("2026-08-02");
+  });
+});
+
+describe("the archive of our own days", () => {
+  it("asks Analytics Engine for ONE day in the only form that dialect accepts", () => {
+    // Learned from a 422: toDate() refuses a STRING argument, and comparing timestamp to a
+    // string refuses to combine DateTime with String. Exactly one shape works.
+    const sql = buildQuery("events", RETENTION_DAYS).replace(
+      `WHERE timestamp > NOW() - INTERVAL '${RETENTION_DAYS}' DAY`,
+      "WHERE toDate(timestamp) = '2026-08-03'",
+    );
+    expect(sql).toContain("WHERE toDate(timestamp) = '2026-08-03'");
+    expect(sql).not.toContain("toDate('");
+  });
+
+  it("keeps our rollup out of the store table, whose whole premise is exactness", async () => {
+    // store_daily holds numbers nobody sampled. Ours are weighted estimates and `people` is a
+    // floor; one table for both would quietly destroy the property the other table exists for.
+    await env.STORES.exec(
+      "INSERT INTO own_daily (day,source,platform,metric,value,sampled,rolled) VALUES ('2026-08-03','miralinka','web','people',4,1,1);",
+    );
+    const own = await readOwnHistory(env.STORES, "people", "2026-08-01", "2026-08-31");
+    expect(own).toEqual([{ day: "2026-08-03", source: "miralinka", platform: "web", value: 4 }]);
+    // …and the store table is untouched by it.
+    expect(await readTotals(env.STORES, "2026-08-01", "2026-08-31")).toEqual([]);
+  });
+
+  it("names a product silent only after two quiet days, not one", async () => {
+    const rows = [
+      ["2026-08-01", "quiet", 5],
+      ["2026-08-02", "quiet", 5],
+      ["2026-08-09", "loud", 5],
+    ] as const;
+    for (const [day, source, value] of rows) {
+      await env.STORES.exec(
+        `INSERT INTO own_daily (day,source,platform,metric,value,sampled,rolled) VALUES ('${day}','${source}','web','page_views',${value},0,1);`,
+      );
+    }
+    const silent = await findSilent(env.STORES, "2026-08-10");
+    // A site with three visitors a week has empty Tuesdays; one of them is a Tuesday, not a fault.
+    expect(silent.map((s) => s.source)).toEqual(["quiet"]);
   });
 });

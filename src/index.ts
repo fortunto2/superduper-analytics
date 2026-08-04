@@ -21,6 +21,7 @@ import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
+import { rollupDay } from "./rollup";
 import { readCampaigns, readTotals } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
 import { syncAppStore } from "./stores/sync";
@@ -360,6 +361,11 @@ app.get("/v1/stores", async (c) => {
  * job nobody can debug — and because the first run after configuring the key should be a
  * deliberate act with its output on screen, not a surprise at 05:00.
  */
+/** Свернуть сутки сейчас. `?day=YYYY-MM-DD` — для добора пропущенных дней, пока они живы. */
+app.post("/v1/rollup", async (c) => {
+  return c.json(await rollupDay(c.env, Date.now(), c.req.query("day")));
+});
+
 app.post("/v1/stores/sync", async (c) => {
   const from = c.req.query("from");
   const result = await syncAppStore(c.env, Date.now(), from);
@@ -374,10 +380,18 @@ export default {
    * re-fetch the same window again for no gain.
    */
   async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+    const now = Date.now();
     ctx.waitUntil(
-      syncAppStore(env, Date.now())
-        .then((r) => console.log("store sync", JSON.stringify(r)))
-        .catch((e: unknown) => console.error("store sync failed", String(e))),
+      Promise.all([
+        syncAppStore(env, now)
+          .then((r) => console.log("store sync", JSON.stringify(r)))
+          .catch((e: unknown) => console.error("store sync failed", String(e))),
+        // Свёртка вчерашнего дня в D1. Отдельная задача от синка магазинов и падает отдельно:
+        // Apple может быть недоступна неделю, а наши сутки после 90-го дня не восстановить.
+        rollupDay(env, now)
+          .then((r) => console.log("rollup", JSON.stringify(r)))
+          .catch((e: unknown) => console.error("rollup failed", String(e))),
+      ]),
     );
   },
 } satisfies ExportedHandler<Bindings>;

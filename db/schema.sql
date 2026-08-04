@@ -57,3 +57,30 @@ CREATE TABLE IF NOT EXISTS store_sync (
   note    TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (provider, source)
 ) WITHOUT ROWID;
+
+-- НАШИ суточные итоги, свёрнутые из Analytics Engine. Отдельная таблица от store_daily, и
+-- разница принципиальная: там точные числа, которые никто не сэмплировал, здесь — взвешенные
+-- оценки из сэмплированного хранилища, а `people` вдобавок нижняя граница. Сложить их в одну
+-- таблицу значило бы потерять ровно то свойство, ради которого store_daily заведена.
+--
+-- Зачем: Analytics Engine удаляет через 90 дней. Свёртка стоит одну строку на продукт в сутки
+-- на метрику — около четырёх тысяч в год — и переживает это на годы. Она отвечает на вопросы,
+-- которые мы задаём СЕГОДНЯ (сколько людей, просмотров, вовлечённых у продукта в такой-то
+-- день), и не отвечает на те, что придумаются завтра: сырых событий в ней нет, и разрез по
+-- стране за март после удаления уже не построить. Полный архив — это по-прежнему Iceberg из
+-- PRD §4; эта таблица закрывает дешёвую и главную его часть, а не отменяет его.
+CREATE TABLE IF NOT EXISTS own_daily (
+  day     TEXT NOT NULL,
+  source  TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  -- people | page_views | engaged | bot_events | events
+  metric  TEXT NOT NULL,
+  value   REAL NOT NULL,
+  -- Было ли сэмплирование в этих сутках. Без флага `people` за старый день неотличимо от
+  -- точного счёта, и через полгода никто уже не вспомнит, что это была нижняя граница.
+  sampled INTEGER NOT NULL DEFAULT 0,
+  rolled  INTEGER NOT NULL,
+  PRIMARY KEY (day, source, platform, metric)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS own_daily_source_day ON own_daily (source, day);
