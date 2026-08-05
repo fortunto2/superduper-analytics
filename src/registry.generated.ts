@@ -28,6 +28,7 @@ export const SOURCE_IDS = [
   "superduperai",
   "superfinans",
   "swift-terminal",
+  "visaphoto",
   "you2idea",
 ] as const;
 
@@ -46,6 +47,7 @@ export const SITES = [
   { id: "rustman", host: "rustman.org", url: "https://rustman.org", open: false, retired: false },
   { id: "rusty", host: "rusty.superduperai.co", url: "https://rusty.superduperai.co", open: false, retired: false },
   { id: "superduperai", host: "superduperai.co", url: "https://superduperai.co", open: true, retired: false },
+  { id: "visaphoto", host: "photo.superduperai.co", url: "https://photo.superduperai.co", open: false, retired: false },
   { id: "you2idea", host: "you2idea.com", url: "https://you2idea.com", open: false, retired: false },
 ] as const;
 
