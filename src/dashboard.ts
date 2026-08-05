@@ -69,6 +69,11 @@ h2{font-size:13px;font-weight:600;margin:0 0 14px;letter-spacing:.04em;text-tran
 .links a:hover{color:var(--series)}
 .srclink{color:var(--series);text-decoration:none;font-weight:600;white-space:nowrap}
 .srclink:hover{text-decoration:underline}
+/* Link to the site itself. Text colour, not the accent: a table holds dozens of these, and
+   colouring them all would stop the accent from marking anything. The underline arrives on
+   hover — exactly when the reader is thinking about following it. */
+.golink{color:inherit;text-decoration:none}
+.golink:hover{color:var(--series);text-decoration:underline}
 .picker{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
 .chip{display:inline-block;padding:5px 12px;border:1px solid var(--border);border-radius:20px;
   font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;background:var(--surface)}
@@ -173,6 +178,20 @@ function line(daily){
 function srcLink(href,label){
   return '<a href="'+href+'" target="_blank" rel="noopener" class="srclink">'+esc(label)+' \u2197</a>'
 }
+// Site address per source id. It arrives in the rows, from the registry \u2014 never assembled here
+// from a host, so a site that moves fixes every link in one edit to the registry.
+var SITE_URL={};
+// A source name links to its own site. No address, no link: an app has no site, and a link to
+// nowhere is worse than plain text.
+var goLink=function(src,label){var u=SITE_URL[src];
+  return u?'<a href="'+u+'" target="_blank" rel="noopener" class="golink">'+esc(label)+'</a>':esc(label)};
+// A path links to the page, but only when exactly one source has it: "/" and "/about" live on
+// every site, and guessing which was meant would send you to the wrong one.
+var pageLink=function(srcs,path){
+  if(srcs.length!==1||String(path).charAt(0)!=='/') return esc(path);
+  var u=SITE_URL[srcs[0]]; if(!u) return esc(path);
+  var base=u.charAt(u.length-1)==='/'?u.slice(0,-1):u;
+  return '<a href="'+base+path+'" target="_blank" rel="noopener" class="golink">'+esc(path)+'</a>'};
 var GSC=function(url){
   return 'https://search.google.com/search-console/performance/search-analytics?resource_id='+
     // Без регулярки: обратный слэш в шаблонной строке схлопывается и ломает её.
@@ -217,6 +236,7 @@ ${CHART_JS}
 
 function render(o){
   var st=o.stats,edge=o.coverage.reduce(function(a,c){return a+c.edge_uniques},0);
+  st.sources.forEach(function(r){ if(r.url) SITE_URL[r.source]=r.url });
   var cur=picked();
   var rows=st.sources.filter(function(r){return !cur||r.source===cur});
   if(cur&&!rows.length) cur='';
@@ -377,8 +397,10 @@ function render(o){
       'rather than by any identifier.</p></div>';
   }
 
-  // «Откуда» и «что читали» — две половины одного вопроса, поэтому рядом и одинаковой формы.
-  var half=function(title,rows,label,note){
+  // Two halves of one question, so: side by side, same shape.
+  // linky is for paths only. A country is the same kind of key but leads nowhere, and a link
+  // that goes nowhere promises a destination it does not have.
+  var half=function(title,rows,label,note,linky){
     var list=(rows||[]).filter(function(r){return !cur||r.source===cur});
     if(!list.length) return '';
     var byKey={};
@@ -389,9 +411,9 @@ function render(o){
     var h2='<div class="card"><h2>'+esc(title)+'</h2><table><thead><tr><th>'+esc(label)+'</th>'+
       (cur?'':'<th>Product</th>')+'<th class="n">Page views</th><th class="n">Engaged</th>'+
       '</tr></thead><tbody>';
-    keys.forEach(function(k){var v=byKey[k];
-      h2+='<tr><td class="name">'+esc(k)+'</td>'+
-        (cur?'':'<td class="sub">'+esc(Object.keys(v.src).sort().join(', '))+'</td>')+
+    keys.forEach(function(k){var v=byKey[k];var srcs=Object.keys(v.src).sort();
+      h2+='<tr><td class="name">'+(linky?pageLink(srcs,k):esc(k))+'</td>'+
+        (cur?'':'<td class="sub">'+esc(srcs.join(', '))+'</td>')+
         '<td class="n">'+fmt(v.views)+'</td><td class="n">'+fmt(v.eng)+'</td></tr>'});
     return h2+'</tbody></table><p class="sub" style="margin:14px 0 0">'+note+'</p></div>'
   };
@@ -488,7 +510,9 @@ function render(o){
     'narrow a thirty-visitor week to something identifiable, which is the line past which a '+
     'counter stops being anonymous.');
   h+=half('What they read',st.pages,'Page',
-    'Query strings are stripped before storage, so a page appears once however it was linked.');
+    'Query strings are stripped before storage, so a page appears once however it was linked. '+
+    'A path links through to the page itself when it belongs to one site — «/» lives on all '+
+    'of them, and guessing which was meant would send you to the wrong one.',true);
 
   h+='<div class="card"><h2>Sources</h2>';
   if(!rows.length) h+='<p class="empty">No events in this window.</p>';
@@ -506,7 +530,7 @@ function render(o){
         h+='<tr><td colspan="5" class="sub" style="padding-top:14px;border-top:1px solid var(--grid)">'+
           esc(r.domain)+'</td></tr>';
       }
-      h+='<tr><td class="name" style="padding-left:12px">'+esc(r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
+      h+='<tr><td class="name" style="padding-left:12px">'+goLink(r.source,r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
         '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td>'+
         '<td class="n">'+fmt(r.page_views)+'</td>'+
         '<td class="n">'+fmt(r.engaged)+'</td>'+

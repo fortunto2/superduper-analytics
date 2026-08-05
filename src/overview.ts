@@ -227,11 +227,16 @@ export async function fetchOverview(
     }
   }
   const fullHost = new Map<string, string>(SITES.map(s => [s.id, s.host.toLowerCase()]));
+  const urlOf = new Map<string, string>(SITES.map(s => [s.id, s.url]));
 
   stats.stats.sources = stats.stats.sources
     .map(row => ({
       ...row,
       domain: hostOf.get(row.source) ?? row.source,
+      // Адрес идёт из реестра, а не собирается из хоста: реестр и есть источник правды, и
+      // когда сайт переезжает, ссылки в панели переезжают вместе с ним одной правкой.
+      // Только у веба — у приложения нет адреса, на который можно перейти.
+      url: row.platform === "web" ? urlOf.get(row.source) : undefined,
       // Только у веба: у приложения нет хоста, и приписать ему чтение сайта было бы выдумкой.
       ai_requests:
         row.platform === "web" ? (aiByHost.get(fullHost.get(row.source) ?? "") ?? 0) : undefined,
