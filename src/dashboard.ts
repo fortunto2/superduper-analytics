@@ -181,6 +181,10 @@ function srcLink(href,label){
 // Site address per source id. It arrives in the rows, from the registry \u2014 never assembled here
 // from a host, so a site that moves fixes every link in one edit to the registry.
 var SITE_URL={};
+// Display name per source id. The id keeps doing every job that needs stability — the ?p=
+// parameter, the filter, the archive partition — and this is only what a person reads.
+var SITE_NAME={};
+var label=function(src){ return SITE_NAME[src]||src };
 // A source name links to its own site. No address, no link: an app has no site, and a link to
 // nowhere is worse than plain text.
 var goLink=function(src,label){var u=SITE_URL[src];
@@ -221,7 +225,7 @@ function pickerHtml(o,cur){
   var ids=o.stats.sources.map(function(r){return r.source}).filter(function(v,i,a){return a.indexOf(v)===i}).sort();
   var h='<div class="picker"><a class="chip'+(cur?'':' on')+'" href="'+link('')+'">All products</a>';
   ids.forEach(function(id){
-    h+='<a class="chip'+(cur===id?' on':'')+'" href="'+link(id)+'">'+esc(id)+'</a>'});
+    h+='<a class="chip'+(cur===id?' on':'')+'" href="'+link(id)+'">'+esc(label(id))+'</a>'});
   return h+'</div>'
 }
 
@@ -236,7 +240,8 @@ ${CHART_JS}
 
 function render(o){
   var st=o.stats,edge=o.coverage.reduce(function(a,c){return a+c.edge_uniques},0);
-  st.sources.forEach(function(r){ if(r.url) SITE_URL[r.source]=r.url });
+  st.sources.forEach(function(r){ if(r.url) SITE_URL[r.source]=r.url;
+    if(r.name) SITE_NAME[r.source]=r.name });
   var cur=picked();
   var rows=st.sources.filter(function(r){return !cur||r.source===cur});
   if(cur&&!rows.length) cur='';
@@ -264,7 +269,7 @@ function render(o){
     tile('Page views',fmt(views),'bots excluded')+
     tile('Engaged',fmt(engaged),'scrolled, clicked or typed')+
     tile('Bot events',fmt(bots),botShare+'% of everything received')+
-    (cur?tile('Product',esc(cur),'one of '+o.sites_total+' registered')
+    (cur?tile('Product',esc(label(cur)),'one of '+o.sites_total+' registered')
         :tile('Counters live',o.sites_reporting+' / '+o.sites_total,'registered sites'))+
   '</div>';
 
@@ -530,7 +535,7 @@ function render(o){
         h+='<tr><td colspan="5" class="sub" style="padding-top:14px;border-top:1px solid var(--grid)">'+
           esc(r.domain)+'</td></tr>';
       }
-      h+='<tr><td class="name" style="padding-left:12px">'+goLink(r.source,r.source)+'</td><td class="sub">'+esc(r.platform)+'</td>'+
+      h+='<tr><td class="name" style="padding-left:12px">'+goLink(r.source,label(r.source))+'</td><td class="sub">'+esc(r.platform)+'</td>'+
         '<td class="n">'+fmt(r.people_seen)+(r.max_sample>1?' <span class="sub">+</span>':'')+'</td>'+
         '<td class="n">'+fmt(r.page_views)+'</td>'+
         '<td class="n">'+fmt(r.engaged)+'</td>'+

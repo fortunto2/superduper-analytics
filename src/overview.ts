@@ -228,6 +228,7 @@ export async function fetchOverview(
   }
   const fullHost = new Map<string, string>(SITES.map(s => [s.id, s.host.toLowerCase()]));
   const urlOf = new Map<string, string>(SITES.map(s => [s.id, s.url]));
+  const nameOf = new Map<string, string>(SITES.map(s => [s.id, s.name]));
 
   stats.stats.sources = stats.stats.sources
     .map(row => ({
@@ -237,6 +238,10 @@ export async function fetchOverview(
       // когда сайт переезжает, ссылки в панели переезжают вместе с ним одной правкой.
       // Только у веба — у приложения нет адреса, на который можно перейти.
       url: row.platform === "web" ? urlOf.get(row.source) : undefined,
+      // Как продукт называется на экране. `source` остаётся идентификатором везде, где он
+      // что-то определяет — в адресе, в фильтре, в архиве, — потому что он неизменен. Имя
+      // существует только чтобы человек не читал `visaphoto` о продукте по имени VisaYes.
+      name: nameOf.get(row.source) ?? row.source,
       // Только у веба: у приложения нет хоста, и приписать ему чтение сайта было бы выдумкой.
       ai_requests:
         row.platform === "web" ? (aiByHost.get(fullHost.get(row.source) ?? "") ?? 0) : undefined,

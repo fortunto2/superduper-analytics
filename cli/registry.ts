@@ -22,6 +22,13 @@ const Site = z.object({
   id: SourceId,
   url: z.url(),
   /**
+   * What to call this on screen. `id` is permanent because it partitions the archive, so it
+   * cannot follow a rename or a move to a new domain — and a dashboard that shows the id ends
+   * up presenting `visaphoto` for a product called VisaYes. Optional: the id is a fine name
+   * until it is not.
+   */
+  name: z.string().min(1).optional(),
+  /**
    * The site is switched off. It stays in the registry rather than being deleted, because the
    * id partitions the archive: delete the row and the history it labels becomes unanswerable —
    * "what was `editor`?" has no answer anywhere. Retired sources are excluded from coverage,
@@ -104,10 +111,11 @@ export function checkRegistry(registry: RegistryFile): string[] {
 /** Sites with their hostname, so the Worker can line a site up against its Cloudflare zone. */
 export function sitesOf(
   registry: RegistryFile,
-): { id: string; host: string; url: string; open: boolean; retired: boolean }[] {
+): { id: string; name: string; host: string; url: string; open: boolean; retired: boolean }[] {
   return registry.sites
     .map((site) => ({
       id: site.id,
+      name: site.name ?? site.id,
       host: new URL(site.url).host,
       url: site.url,
       open: site.public,
@@ -148,7 +156,8 @@ export function renderGenerated(registry: RegistryFile): string {
   const sites = sitesOf(registry)
     .map(
       (s) =>
-        `  { id: ${JSON.stringify(s.id)}, host: ${JSON.stringify(s.host)}, ` +
+        `  { id: ${JSON.stringify(s.id)}, name: ${JSON.stringify(s.name)}, ` +
+        `host: ${JSON.stringify(s.host)}, ` +
         `url: ${JSON.stringify(s.url)}, open: ${String(s.open)}, ` +
         `retired: ${String(s.retired)} },`,
     )
