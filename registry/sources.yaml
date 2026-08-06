@@ -42,6 +42,7 @@ sites:
   - id: visaphoto
     name: VisaYes
     url: https://visayes.app
+    public: true
   # Выключен: старый редактор, домен не отвечает. Остаётся здесь, а не удаляется — id
   # партиционирует архив, и без строки история под этим именем становится необъяснимой.
   - id: editor
@@ -53,6 +54,7 @@ sites:
   - id: airsignal
     name: Air Signal
     url: https://airsignal.app
+    public: true
   - id: rustman
     url: https://rustman.org
   - id: akbuzat

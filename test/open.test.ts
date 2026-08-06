@@ -14,11 +14,18 @@ describe("what may be published", () => {
     expect(open.length).toBeLessThan(SITES.length);
   });
 
+  /**
+   * The list is spelled out rather than derived from the registry on purpose: publishing a
+   * product must be two deliberate edits, so a stray `public: true` cannot reach the open
+   * internet on the strength of one. Adding a name here is the second half of that decision.
+   */
   it("publishes exactly the sites the registry marks, and no others", () => {
     expect(SITES.filter((s) => s.open).map((s) => s.id).sort()).toEqual([
+      "airsignal",
       "life2film",
       "live2play",
       "superduperai",
+      "visaphoto",
     ]);
   });
 });
@@ -50,8 +57,9 @@ describe("the public routes", () => {
     };
     const ids = body.products.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    // Only the three flagged `public: true` may ever appear here.
-    for (const id of ids) expect(["superduperai", "live2play", "life2film"]).toContain(id);
+    // Only those flagged `public: true` may ever appear here.
+    for (const id of ids)
+      expect(["superduperai", "live2play", "life2film", "visaphoto", "airsignal"]).toContain(id);
   });
 
   it("marks people as a floor whenever the window was sampled", async () => {

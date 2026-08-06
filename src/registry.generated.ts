@@ -35,7 +35,7 @@ export const SOURCE_IDS = [
 
 /** Sites only, with the hostname used to match a site against its Cloudflare zone. */
 export const SITES = [
-  { id: "airsignal", name: "Air Signal", host: "airsignal.app", url: "https://airsignal.app", open: false, retired: false },
+  { id: "airsignal", name: "Air Signal", host: "airsignal.app", url: "https://airsignal.app", open: true, retired: false },
   { id: "akbuzat", name: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false, retired: false },
   { id: "books", name: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false, retired: false },
   { id: "carettafriends", name: "carettafriends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false, retired: false },
@@ -49,7 +49,7 @@ export const SITES = [
   { id: "rustman", name: "rustman", host: "rustman.org", url: "https://rustman.org", open: false, retired: false },
   { id: "rusty", name: "rusty", host: "rusty.superduperai.co", url: "https://rusty.superduperai.co", open: false, retired: false },
   { id: "superduperai", name: "superduperai", host: "superduperai.co", url: "https://superduperai.co", open: true, retired: false },
-  { id: "visaphoto", name: "VisaYes", host: "visayes.app", url: "https://visayes.app", open: false, retired: false },
+  { id: "visaphoto", name: "VisaYes", host: "visayes.app", url: "https://visayes.app", open: true, retired: false },
   { id: "you2idea", name: "you2idea", host: "you2idea.com", url: "https://you2idea.com", open: false, retired: false },
 ] as const;
 
