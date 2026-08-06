@@ -29,6 +29,7 @@ export const SOURCE_IDS = [
   "superduperai",
   "superfinans",
   "swift-terminal",
+  "turtle-careta",
   "visaphoto",
   "you2idea",
 ] as const;
@@ -38,7 +39,7 @@ export const SITES = [
   { id: "airsignal", name: "Air Signal", host: "airsignal.app", url: "https://airsignal.app", open: true, retired: false },
   { id: "akbuzat", name: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false, retired: false },
   { id: "books", name: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false, retired: false },
-  { id: "carettafriends", name: "carettafriends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false, retired: false },
+  { id: "carettafriends", name: "Caretta Friends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false, retired: false },
   { id: "editor", name: "editor", host: "editor.superduperai.co", url: "https://editor.superduperai.co", open: false, retired: true },
   { id: "facealarm", name: "facealarm", host: "face-alarm.com", url: "https://face-alarm.com", open: false, retired: false },
   { id: "life2film", name: "life2film", host: "life2film.com", url: "https://life2film.com", open: true, retired: false },
@@ -49,6 +50,7 @@ export const SITES = [
   { id: "rustman", name: "rustman", host: "rustman.org", url: "https://rustman.org", open: false, retired: false },
   { id: "rusty", name: "rusty", host: "rusty.superduperai.co", url: "https://rusty.superduperai.co", open: false, retired: false },
   { id: "superduperai", name: "superduperai", host: "superduperai.co", url: "https://superduperai.co", open: true, retired: false },
+  { id: "turtle-careta", name: "Caretta Gazipaşa", host: "carettafriends.com", url: "https://carettafriends.com", open: false, retired: false },
   { id: "visaphoto", name: "VisaYes", host: "visayes.app", url: "https://visayes.app", open: true, retired: false },
   { id: "you2idea", name: "you2idea", host: "you2idea.com", url: "https://you2idea.com", open: false, retired: false },
 ] as const;

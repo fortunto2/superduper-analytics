@@ -60,10 +60,17 @@ sites:
   - id: akbuzat
     url: https://akbuzat.net
   # Тот же id, что у приложения ниже — один продукт, одна воронка, как у live2play.
-  # `id` постоянен: он партиционирует архив. Если сайт переедет на carettafriends.com,
-  # менять надо только `url`, иначе история осиротеет.
+  # `id` постоянен: он партиционирует архив.
   - id: carettafriends
+    name: Caretta Friends
     url: https://app.carettafriends.com
+  # Отдельный источник, а не смена url у соседа выше: это два живых сайта с разной работой —
+  # там лендинг приложения, здесь содержательный сайт о черепахах Газипаши. Свести их в один
+  # id нельзя и технически: ingest сверяет origin ровно с одним хостом и молча отбрасывает
+  # события со второго.
+  - id: turtle-careta
+    name: Caretta Gazipaşa
+    url: https://carettafriends.com
 
 # Apple `app_id` is the App Store Connect numeric id — handy for joining store analytics later.
 apps:
