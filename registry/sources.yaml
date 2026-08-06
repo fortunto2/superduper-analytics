@@ -47,6 +47,12 @@ sites:
   - id: editor
     url: https://editor.superduperai.co
     retired: true
+  # Качество воздуха и комфорт снаружи. Переехал с air.miralinka.com (Vercel) на свой домен
+  # 6 августа 2026. Поддомен как отдельный источник не заводим: он отдаёт 301 сюда, и события
+  # с него — это те же визиты, просто с прошлым адресом.
+  - id: airsignal
+    name: Air Signal
+    url: https://airsignal.app
   - id: rustman
     url: https://rustman.org
   - id: akbuzat

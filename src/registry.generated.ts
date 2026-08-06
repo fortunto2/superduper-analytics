@@ -7,6 +7,7 @@
 
 /** Every id that may appear as `source` on an event — sites and apps, deduplicated. */
 export const SOURCE_IDS = [
+  "airsignal",
   "akbuzat",
   "books",
   "carettafriends",
@@ -34,6 +35,7 @@ export const SOURCE_IDS = [
 
 /** Sites only, with the hostname used to match a site against its Cloudflare zone. */
 export const SITES = [
+  { id: "airsignal", name: "Air Signal", host: "airsignal.app", url: "https://airsignal.app", open: false, retired: false },
   { id: "akbuzat", name: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false, retired: false },
   { id: "books", name: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false, retired: false },
   { id: "carettafriends", name: "carettafriends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false, retired: false },
