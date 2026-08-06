@@ -98,6 +98,12 @@ apps:
     bundle_id: com.carettafriends.app
     app_id: "6794324877"
     site: carettafriends
+  # The first Android app here. Same `id` as the iOS app and the site on purpose — one product,
+  # one funnel: the events differ by `platform`, which is a column, not a source.
+  - id: carettafriends
+    platform: android
+    bundle_id: com.carettafriends
+    site: carettafriends
   - id: currencypal
     platform: ios
     bundle_id: co.superduperai.currencypal
