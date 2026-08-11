@@ -6,3 +6,9 @@ declare module "*.sql?raw" {
   const contents: string;
   export default contents;
 }
+
+/** То же для wrangler.jsonc: крон объявлен там, а джоб сверяется с ним — тест читает файл. */
+declare module "*.jsonc?raw" {
+  const contents: string;
+  export default contents;
+}

@@ -50,7 +50,16 @@ function b64url(data: ArrayBuffer | string): string {
  * кэшируется между запросами намеренно, потому что крон ходит раз в сутки, и хранить его
  * дольше значило бы держать секрет там, где он не нужен.
  */
-export async function googleToken(env: SearchEnv, now: number): Promise<string | undefined> {
+export async function googleToken(
+  env: SearchEnv,
+  now: number,
+  /**
+   * Область доступа. По умолчанию консоль — так этот вызов и жил. Аналитика просит свою: один
+   * токен на обе выдать можно, но тогда джоб, которому нужны только показы, ходит с правом
+   * читать ещё и посещаемость. Дешевле взять два токена, чем расширять один.
+   */
+  scope: string = SCOPE,
+): Promise<string | undefined> {
   const { GOOGLE_SA_EMAIL, GOOGLE_SA_KEY } = env;
   if (!GOOGLE_SA_EMAIL || !GOOGLE_SA_KEY) return undefined;
 
@@ -71,7 +80,7 @@ export async function googleToken(env: SearchEnv, now: number): Promise<string |
   const claims = b64url(
     JSON.stringify({
       iss: GOOGLE_SA_EMAIL,
-      scope: SCOPE,
+      scope,
       aud: TOKEN_URL,
       iat,
       exp: iat + 3600,

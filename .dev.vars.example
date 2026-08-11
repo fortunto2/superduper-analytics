@@ -39,6 +39,17 @@ INTERNAL_IPS=203.0.113.7,198.51.100.22
 #   openssl rand -hex 32
 ANON_SALT=replace-with-openssl-rand-hex-32
 
+# Google, для двух суточных джобов: Search Console (показы и позиции) и GA4 (просмотры
+# страниц чужим счётчиком). Аккаунт один и тот же, области доступа разные — джоб просит свою.
+#   pnpm wrangler secret put GOOGLE_SA_EMAIL
+#   pnpm wrangler secret put GOOGLE_SA_KEY < service-account-private-key.pem
+#
+# Доступ выдаётся не ключом, а ролью: в Search Console аккаунт добавляется в ресурс, в GA4 —
+# зрителем в свойство (Admin → Property Access Management). Ресурс без роли отвечает не
+# ошибкой, а пустотой, и это выглядит как «трафика нет».
+GOOGLE_SA_EMAIL
+GOOGLE_SA_KEY
+
 # Shared key gating the dashboard and /v1/*. Unset means those routes refuse outright — the
 # read side shows the business and must never be public by accident. The real answer is
 # Cloudflare Access in front of / and /v1/*; this is the stopgap until that is configured.

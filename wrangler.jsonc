@@ -49,8 +49,12 @@
   // Once a day, a few hours after midnight UTC, because a store report for "yesterday" does not
   // exist at 00:01 — Apple restates recent days, so the job re-fetches a trailing window and
   // upserts rather than appending.
+  //
+  // Второй запуск в 05:20 — только GA4, и он отдельный не по расписанию, а по бюджету:
+  // подзапросов у воркера пятьдесят на вызов, и утренний джоб уже упирается в потолок из-за
+  // Search Console. Своё срабатывание даёт GA собственные пятьдесят.
   "triggers": {
-    "crons": ["0 5 * * *"]
+    "crons": ["0 5 * * *", "20 5 * * *"]
   },
 
   // The binding cannot tell you the dataset name at runtime, and the SQL API needs it as a

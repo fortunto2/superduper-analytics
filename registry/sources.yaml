@@ -13,14 +13,21 @@
 # otherwise, because the opposite mistake cannot be taken back.
 
 sites:
+  # `ga_property_id` — числовой идентификатор ресурса GA4, а не тег `G-`/`GT-` со страницы.
+  # Одно свойство может обслуживать несколько сайтов: superduperai и live2play шлют в одно, и
+  # суточный джоб разделяет их фильтром по хосту. Свойство без сайта в этом списке не
+  # спрашивается вовсе — реестр здесь такой же единственный вход, как и для событий.
   - id: superduperai
     url: https://superduperai.co
+    ga_property_id: "374549185"
     public: true
   - id: live2play
     url: https://live2play.superduperai.co
+    ga_property_id: "374549185"
     public: true
   - id: life2film
     url: https://life2film.com
+    ga_property_id: "397806603"
     public: true
   - id: facealarm
     url: https://face-alarm.com
@@ -28,6 +35,7 @@ sites:
     url: https://you2idea.com
   - id: miralinka
     url: https://miralinka.com
+    ga_property_id: "346749650"
   - id: miralinka-marafon
     url: https://marafon.miralinka.com
   - id: books

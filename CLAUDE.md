@@ -43,6 +43,8 @@ src/snippet.ts       the web counter, served at /sda.js. A string, not a build a
 src/sinks/           where events land. Dumb by design: positions, nothing else
 src/stats.ts         reads the hot store over the SQL API. Never writes
 src/stores/          what Apple and Google report: exact daily totals, in D1, not in AE
+src/search/          Search Console: impressions, queries, position. The leading indicator
+src/ga/              GA4 page views — the other counter on the same pages, never summed
 src/zones.ts         Cloudflare's own edge analytics. Where "how many people" comes from
 src/overview.ts      assembles both for the dashboard — never sums them
 src/dashboard.ts     the page at /. One self-contained string, no framework
@@ -62,7 +64,7 @@ Generated, never edited by hand: `src/registry.generated.ts` (committed) and
 `worker-configuration.d.ts` (gitignored). Both come from `make gen`; `make check` fails if the
 first has drifted.
 
-## The four things that will bite
+## The things that will bite
 1. **Blob and double positions are a wire format.** `BLOB_SLOTS` and `DOUBLE_SLOTS` map fields
    to `blob1..blob20` / `double1..double20`, and every query refers to them by position.
    Append only — reordering silently changes what historical data means. A slot without a
@@ -82,6 +84,15 @@ first has drifted.
    different things counted by different parties.
 5. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or
    dashboard may create a source — otherwise the git file stops being the truth.
+6. **Two counters, one table, никогда не в сумме.** `page_daily.provider` — часть первичного
+   ключа: за один день у одной страницы лежат `own` и `ga4`, и оба числа верные. GA режут
+   блокировщики, у нас сэмплирование и свой фильтр ботов; расхождение в единицы означает, что
+   нашему счётчику можно верить, расхождение вдвое — что один из них чего-то не видит. Джоб
+   GA4 (`src/ga/`) идёт **отдельным кроном в 05:20**, и это не про расписание, а про бюджет:
+   пятьдесят подзапросов на вызов, а утренний джоб уже упирается в потолок из-за Search
+   Console. Свойство GA4 берётся из реестра (`ga_property_id`), а строки фильтруются по хосту
+   сайта — одно свойство обслуживает несколько сайтов и вдобавок видит `localhost` и превью:
+   у miralinka это была треть «трафика».
 
 ## Do / Don't
 - **Do** validate at the edge with zod and trust `request.cf` over anything the client says.

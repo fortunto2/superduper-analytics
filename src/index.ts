@@ -25,6 +25,7 @@ import { fetchStats } from "./stats";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
 import { rollupDay, rollupPages } from "./rollup";
 import { syncSearchConsole } from "./search/sync";
+import { GA_CRON, syncGoogleAnalytics } from "./ga/sync";
 import { readCampaigns, readTotals } from "./stores/db";
 import { dayBefore, utcDay } from "./stores/schema";
 import { syncAppStore } from "./stores/sync";
@@ -363,6 +364,11 @@ app.post("/v1/search/sync", async (c) => {
   return c.json(await syncSearchConsole(c.env, Date.now()));
 });
 
+/** То же для GA4: прогнать сейчас и увидеть ответ, а не ждать до утра. */
+app.post("/v1/ga/sync", async (c) => {
+  return c.json(await syncGoogleAnalytics(c.env, Date.now()));
+});
+
 /** Свернуть сутки сейчас. `?day=YYYY-MM-DD` — для добора пропущенных дней, пока они живы. */
 app.post("/v1/rollup", async (c) => {
   return c.json(await rollupDay(c.env, Date.now(), c.req.query("day")));
@@ -411,7 +417,7 @@ export default {
    * others, and a scheduled handler that throws is retried by the platform in a way that would
    * re-fetch the same window again for no gain.
    */
-  async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
     const now = Date.now();
     // Имя задачи пишется один раз, а не дважды на каждую: раньше на каждый джоб приходилось
     // три скопированных строки и два места, где можно ошибиться в подписи лога.
@@ -419,6 +425,13 @@ export default {
       p.then((r) => console.log(name, JSON.stringify(r))).catch((e: unknown) =>
         console.error(`${name} failed`, String(e)),
       );
+    // GA4 живёт в своём срабатывании: у него свои пятьдесят подзапросов, а не остаток от чужих.
+    // Сравнение с расписанием, а не «если не первое»: незнакомый крон лучше не выполнит ничего,
+    // чем выполнит не то.
+    if (event.cron === GA_CRON) {
+      ctx.waitUntil(job("ga sync", syncGoogleAnalytics(env, now)));
+      return;
+    }
     ctx.waitUntil(
       Promise.all([
         job("store sync", syncAppStore(env, now)),

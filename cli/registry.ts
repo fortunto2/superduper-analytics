@@ -36,6 +36,18 @@ const Site = z.object({
    * fraction ignorable.
    */
   retired: z.boolean().default(false),
+  /**
+   * GA4 property this site reports into — the numeric id, not the `G-`/`GT-` tag.
+   *
+   * Optional and public: it is an identifier, not a credential, and reading it still requires
+   * the service account. One property can serve several sites (superduperai and live2play share
+   * one), so the daily job filters by this site's hostname rather than trusting the property to
+   * be about one site.
+   */
+  ga_property_id: z
+    .string()
+    .regex(/^\d+$/, "GA4 property id is digits — the numeric id, not the G- tag")
+    .optional(),
   ...Publishable,
 });
 
@@ -43,8 +55,15 @@ const App = z.object({
   id: SourceId,
   platform: Platform,
   bundle_id: z.string().min(1),
-  /** App Store Connect numeric id, quoted in YAML so it stays a string. */
-  app_id: z.string().regex(/^\d+$/, "App Store Connect id is digits"),
+  /**
+   * App Store Connect numeric id, quoted in YAML so it stays a string.
+   *
+   * Optional because Google Play has no such thing — an Android app is identified by its
+   * package name, and the daily store job is App Store Connect only (`platform === "ios"`).
+   * While this was required, the first Android entry made `gen` refuse the whole registry,
+   * and with it `check` and `test`: one app without an Apple id blocked every other change.
+   */
+  app_id: z.string().regex(/^\d+$/, "App Store Connect id is digits").optional(),
   /** Optional cross-reference: the same product also has a site with this id. */
   site: SourceId.optional(),
   ...Publishable,
@@ -87,15 +106,21 @@ export function sourceIdsOf(registry: RegistryFile): string[] {
 export function checkRegistry(registry: RegistryFile): string[] {
   const problems: string[] = [];
 
-  for (const [list, entries] of [
-    ["sites", registry.sites],
-    ["apps", registry.apps],
-  ] as const) {
-    const seen = new Set<string>();
-    for (const entry of entries) {
-      if (seen.has(entry.id)) problems.push(`${list}: duplicate id "${entry.id}"`);
-      seen.add(entry.id);
-    }
+  const seenSites = new Set<string>();
+  for (const site of registry.sites) {
+    if (seenSites.has(site.id)) problems.push(`sites: duplicate id "${site.id}"`);
+    seenSites.add(site.id);
+  }
+
+  // У приложений ключ — id вместе с платформой. Один продукт на двух магазинах носит ОДИН id
+  // намеренно: события различаются полем `platform`, которое колонка, а не источник, и вторая
+  // воронка на тот же продукт была бы ошибкой. Пока правило смотрело на один id, первый же
+  // Android рядом со своим iOS ронял проверку — а с ней `gen` и `test`.
+  const seenApps = new Set<string>();
+  for (const app of registry.apps) {
+    const key = `${app.id}/${app.platform}`;
+    if (seenApps.has(key)) problems.push(`apps: duplicate id "${app.id}" on ${app.platform}`);
+    seenApps.add(key);
   }
 
   const siteIds = new Set(registry.sites.map((s) => s.id));
@@ -111,7 +136,15 @@ export function checkRegistry(registry: RegistryFile): string[] {
 /** Sites with their hostname, so the Worker can line a site up against its Cloudflare zone. */
 export function sitesOf(
   registry: RegistryFile,
-): { id: string; name: string; host: string; url: string; open: boolean; retired: boolean }[] {
+): {
+  id: string;
+  name: string;
+  host: string;
+  url: string;
+  open: boolean;
+  retired: boolean;
+  ga: string;
+}[] {
   return registry.sites
     .map((site) => ({
       id: site.id,
@@ -120,6 +153,9 @@ export function sitesOf(
       url: site.url,
       open: site.public,
       retired: site.retired,
+      // Пустая строка, а не undefined: файл генерируется как литерал, и одно поле, то
+      // появляющееся, то исчезающее, читается хуже, чем одно и то же поле пустым
+      ga: site.ga_property_id ?? "",
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -135,7 +171,8 @@ export function appsOf(
     .map((app) => ({
       id: app.id,
       platform: app.platform,
-      storeId: app.app_id,
+      // Пусто у Android: идентификатора App Store у него нет, а суточный джоб отбирает ios
+      storeId: app.app_id ?? "",
       site: app.site ?? null,
     }))
     .sort((a, b) => a.id.localeCompare(b.id) || a.platform.localeCompare(b.platform));
@@ -159,7 +196,7 @@ export function renderGenerated(registry: RegistryFile): string {
         `  { id: ${JSON.stringify(s.id)}, name: ${JSON.stringify(s.name)}, ` +
         `host: ${JSON.stringify(s.host)}, ` +
         `url: ${JSON.stringify(s.url)}, open: ${String(s.open)}, ` +
-        `retired: ${String(s.retired)} },`,
+        `retired: ${String(s.retired)}, ga: ${JSON.stringify(s.ga)} },`,
     )
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT.
