@@ -27,6 +27,8 @@
  */
 import { SITES, SOURCE_IDS } from "./registry.generated";
 import { fetchOverview, type OverviewEnv } from "./overview";
+import { fetchRetention } from "./retention";
+import { fetchConversion } from "./conversion";
 import { RETENTION_DAYS } from "./schema";
 
 const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
@@ -115,6 +117,42 @@ const TOOLS = [
       "person asked a question right now, an AI Crawler is building an index. These never " +
       "appear in `traffic` — agents do not run JavaScript, so the counter never sees them.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "retention",
+    title: "Do people come back to the apps",
+    description:
+      "Installs that returned on a later day, per app. THE demand signal in this dataset: " +
+      "everything else counts arrivals, this counts the ones who came back on their own. Apps " +
+      "only, and that is not a gap to fill later — the web id is derived at the edge and dies " +
+      "at midnight UTC, so a web return is invisible by design. An app sends an install-scoped " +
+      "UUID that lives until the app is deleted, which is what makes the question answerable " +
+      "without any identifier for a person. Installs first seen too recently to have had the " +
+      "chance to return are counted separately and kept OUT of the rate, so a burst of new " +
+      "users cannot make retention look like it collapsed.",
+    inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
+  },
+  {
+    name: "conversion",
+    title: "Which pages make people act, and which do not",
+    description:
+      "Goals against page views of the same page — the denominator `goals` does not have. Read " +
+      "it for what to fix: a page with traffic and no action is a page whose next step is " +
+      "unclear, and it is cheaper to fix than to find more traffic. Counted ON the page, not " +
+      "along a path between pages: a journey needs a session, a session needs an id that " +
+      "outlives a day, and the web has none here. Pages below the view threshold are dropped, " +
+      "because one click on one view is not a 100% conversion rate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: DAYS_PROPERTY,
+        min_views: {
+          type: "integer",
+          minimum: 1,
+          description: "Drop pages with fewer views than this. Default 10 — below that the rate is noise.",
+        },
+      },
+    },
   },
   {
     name: "counter_coverage",
@@ -254,6 +292,79 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
       }
 
       const days = windowDays(args);
+
+      // Эти два спрашивают хранилище одним запросом каждый. Обзор стоит семи, а чтения
+      // метрятся — поэтому они стоят ДО него и никогда его не зовут.
+      if (name === "retention") {
+        const result = await fetchRetention(env, days, now);
+        if (!result.ok) {
+          return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
+        }
+        const { rows, first_day_seen, truncated } = result.retention;
+        const pct = (v: number | null) => (v === null ? "n/a" : `${Math.round(v * 100)}%`);
+        const lines = rows.map(
+          r =>
+            `- ${r.source} (${r.platform}) — ${r.installs} reporting installs since ` +
+            `${r.first_report_day}, ${r.returned} of ${r.mature} mature came back on another ` +
+            `day (${pct(r.return_rate)}), ${r.active_now} active in the last week, ` +
+            `${r.events_per_install.toFixed(1)} events per install, median ` +
+            `${r.median_days_active} active day(s)` +
+            (r.too_new > 0 ? `, ${r.too_new} too new to ask` : "") +
+            (r.max_sample > 1 ? " — SAMPLED, installs is a floor" : ""),
+        );
+        const text = [
+          `Last ${days} day(s), apps only.`,
+          first_day_seen !== undefined
+            ? `Earliest app event in this window: ${first_day_seen}. A rate covering fewer days ` +
+              "than the window asked for is still honest — the window just contains less than it says."
+            : "No app events in this window at all.",
+          truncated ? "TRUNCATED: hit the row cap, so the rates cover a slice, not everything." : "",
+          "",
+          ...(lines.length > 0 ? lines : ["No app sent an event with an install id in this window."]),
+          "",
+          "Returned = the same install was active on more than one calendar day. Installs first " +
+            "seen within the last two days are excluded from the rate: they have not had the " +
+            "chance to return, and leaving them in makes a growing app look like a leaking one.",
+          "An install here is a device that has REPORTED, not a download. The id is born on the " +
+            "first launch of a build that carries the counter, so the week a counter ships, every " +
+            "existing user looks brand new and the return rate is understated. Check the date " +
+            "after 'since' before reading a low rate as a problem — downloads are Apple's number, " +
+            "in `stores`, and the two are never added together.",
+          "Web is absent on purpose: its id rotates at midnight, so every visitor would look new.",
+        ].filter(line => line !== "");
+        return toolText(id, text.join("\n"), version);
+      }
+
+      if (name === "conversion") {
+        const minViews = typeof args.min_views === "number" ? Math.trunc(args.min_views) : undefined;
+        const result = await fetchConversion(env, days, minViews);
+        if (!result.ok) {
+          return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
+        }
+        const { rows, min_views, truncated } = result.conversion;
+        const lines = rows.map(r => {
+          const goals = r.by_goal.map(g => `${g.name} ${g.count}`).join(", ");
+          return (
+            `- ${r.source} ${r.path} — ${r.page_views} views, ` +
+            `${Math.round(r.conversion * 100)}% acted (${r.goals}), ` +
+            `${Math.round(r.engagement * 100)}% engaged` +
+            (goals !== "" ? ` — ${goals}` : "")
+          );
+        });
+        const text = [
+          `Last ${days} day(s), web pages with at least ${min_views} views, best rate first.`,
+          truncated ? "TRUNCATED: hit the row cap, and the cap drops the RAREST rows — which are goals." : "",
+          "",
+          ...(lines.length > 0 ? lines : ["No page cleared the view threshold in this window."]),
+          "",
+          "Acted = events on that page that are not a view or an engagement, over its views. It " +
+            "can exceed 100%: one visitor may click twice. A page at the bottom with real traffic " +
+            "is the cheapest thing on this list to fix.",
+          "Engaged is the weaker signal that every page has: a scroll, a click or a keypress.",
+        ].filter(line => line !== "");
+        return toolText(id, text.join("\n"), version);
+      }
+
       const result = await fetchOverview(env, days, now);
       if (!result.ok) {
         return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
@@ -267,11 +378,11 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             `page views ${r.page_views}, engaged ${r.engaged}, bot events ${r.bot_events}`,
         );
         const text = [
-          `Last ${days} day(s). People ${stats.total_people}, page views ${stats.total_page_views}, ` +
+          `Last ${days} day(s). People-days ${stats.people_days}, page views ${stats.total_page_views}, ` +
             `engaged ${stats.total_engaged}, bot events ${stats.total_bot_events} of ` +
             `${stats.total_events} received.`,
           stats.sampling_active
-            ? "Sampling was ACTIVE: people is a lower bound, because a dropped row takes its " +
+            ? "Sampling was ACTIVE: people-days is a lower bound, because a dropped row takes its " +
               "anonymous id with it and no weighting recovers one. Event counts stay exact."
             : "No sampling in this window; counts are exact.",
           `Counters live on ${sites_reporting} of ${sites_total} registered sites.`,
@@ -280,6 +391,9 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
           "",
           "Engaged = a page view that saw a scroll, click or keypress. It is the hardest signal " +
             "here to fake, and the best proxy for a person rather than a script.",
+          "People-days are NOT people: the web id rotates at midnight UTC, so a visitor who " +
+            "returns on Tuesday is counted again, and the same person on two of our sites counts " +
+            "twice. Whether anyone comes back is what `retention` answers, for apps only.",
         ];
         return toolText(id, text.join("\n"), version);
       }

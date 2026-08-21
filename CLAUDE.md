@@ -42,6 +42,8 @@ src/anon.ts          the per-day edge-derived id. Nothing is stored on the devic
 src/snippet.ts       the web counter, served at /sda.js. A string, not a build artefact
 src/sinks/           where events land. Dumb by design: positions, nothing else
 src/stats.ts         reads the hot store over the SQL API. Never writes
+src/retention.ts     возвраты в приложениях — «есть ли спрос». Веб сюда не попадает никогда
+src/conversion.ts    цель ÷ просмотры той же страницы — «что улучшать»
 src/stores/          what Apple and Google report: exact daily totals, in D1, not in AE
 src/search/          Search Console: impressions, queries, position. The leading indicator
 src/ga/              GA4 page views — the other counter on the same pages, never summed
@@ -84,7 +86,14 @@ first has drifted.
    different things counted by different parties.
 5. **The registry is the only way in.** Unknown `source` is rejected. Nothing in the API or
    dashboard may create a source — otherwise the git file stops being the truth.
-6. **Two counters, one table, никогда не в сумме.** `page_daily.provider` — часть первичного
+6. **«Люди» за окно длиннее суток — не люди.** `people_seen` это distinct `anon`, а `anon` на
+   вебе живёт до полуночи UTC: вернувшийся человек считается снова, и он же на другом нашем
+   сайте считается ещё раз. Поэтому суммарное поле называется `people_days`, а не
+   `total_people`, и в панели колонка подписана People-days. Число одновременно завышено
+   возвратами и занижено сэмплированием, обе ошибки неизвестного размера. Настоящий вопрос
+   «вернулись ли» отвечает `src/retention.ts` — и только для приложений, где идентификатор
+   переживает сутки. Складывать `people_days` с установками из `store_daily` нельзя вдвойне.
+7. **Two counters, one table, никогда не в сумме.** `page_daily.provider` — часть первичного
    ключа: за один день у одной страницы лежат `own` и `ga4`, и оба числа верные. GA режут
    блокировщики, у нас сэмплирование и свой фильтр ботов; расхождение в единицы означает, что
    нашему счётчику можно верить, расхождение вдвое — что один из них чего-то не видит. Джоб

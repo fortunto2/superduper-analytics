@@ -24,13 +24,21 @@ export type SourceTotal = {
   /** Of those, how many saw a scroll, click or keypress. The hardest signal to fake cheaply. */
   engaged: number;
   /**
-   * Distinct anonymous ids among non-bot rows. A LOWER BOUND: Analytics Engine samples, and a
-   * sampled-away row takes its `anon` with it, so no weighting recovers it. `max_sample` says
-   * when to distrust it.
+   * Distinct anonymous ids among non-bot rows.
    *
-   * Still the better figure for "how many people" than Cloudflare's edge uniques, which do not
-   * lose rows to sampling but do count every scraper. A bot-filtered undercount beats an
-   * unfiltered overcount — measured on life2film, the edge said 20k and the truth was 2.
+   * READ THIS AS PEOPLE ONLY WHEN THE WINDOW IS ONE DAY. On the web `anon` is derived at the
+   * edge and rotates at midnight UTC (`src/anon.ts`), so the same person visiting on three days
+   * contributes three ids. Over a 28-day window this is people-DAYS, and calling it people
+   * overstates by however often people come back — the one thing it cannot measure.
+   *
+   * It is also a LOWER BOUND: Analytics Engine samples, and a sampled-away row takes its `anon`
+   * with it, so no weighting recovers it. `max_sample` says when to distrust it. Two errors in
+   * opposite directions, neither of known size, which is why the honest questions moved out:
+   * app returns to `src/retention.ts`, page quality to `src/conversion.ts`.
+   *
+   * Still the better figure than Cloudflare's edge uniques, which do not lose rows to sampling
+   * but do count every scraper. A bot-filtered undercount beats an unfiltered overcount —
+   * measured on life2film, the edge said 20k and the truth was 2.
    */
   people_seen: number;
   /** 1 means nothing was dropped; above 1 means `people_seen` understates. */
@@ -67,7 +75,19 @@ export type Stats = {
   /** Non-bot page views, and the distinct non-bot ids behind them. */
   total_page_views: number;
   total_engaged: number;
-  total_people: number;
+  /**
+   * Сумма `people_seen` по продуктам — и потому НЕ число людей, а человеко-дни.
+   *
+   * Складываются две разные вещи. Идентификатор на вебе живёт одни сутки, так что один человек
+   * за месяц даёт до тридцати записей. И один человек, зашедший на два наших сайта, даёт две:
+   * `anon` не сшивается между свойствами — именно этого свойства от него и добивались.
+   *
+   * Имя `total_people` было снято намеренно: под ним число читалось как аудитория и в этом
+   * качестве было завышено ровно настолько, насколько люди возвращаются. Сколько людей и
+   * возвращаются ли они — вопрос `src/retention.ts`, и там на него отвечают только приложения,
+   * где идентификатор живёт дольше суток.
+   */
+  people_days: number;
   /** True when sampling actually dropped rows, i.e. when `people_seen` is understated. */
   sampling_active: boolean;
   sources: SourceTotal[];
@@ -428,7 +448,7 @@ export async function fetchStats(
         total_bot_events: 0,
         total_page_views: 0,
         total_engaged: 0,
-        total_people: 0,
+        people_days: 0,
         sampling_active: false,
         sources: [],
         daily: [],
@@ -482,9 +502,8 @@ export async function fetchStats(
       total_bot_events: sources.reduce((sum, row) => sum + row.bot_events, 0),
       total_page_views: sources.reduce((sum, row) => sum + row.page_views, 0),
       total_engaged: sources.reduce((sum, row) => sum + row.engaged, 0),
-      // Summed across sources rather than counted globally: the same person on two sites is
-      // two ids anyway, since `anon` is derived per day and never joined across properties.
-      total_people: sources.reduce((sum, row) => sum + row.people_seen, 0),
+      // Складывается сознательно и называется тем, чем является: см. `people_days` выше.
+      people_days: sources.reduce((sum, row) => sum + row.people_seen, 0),
       sampling_active: sources.some((row) => row.max_sample > 1),
       sources,
       // The trend is decoration next to the totals: if it fails, show the numbers anyway.

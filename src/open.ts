@@ -56,8 +56,12 @@ export const OPEN_PAGE_CACHE_SECONDS = 300;
 export type OpenProduct = {
   id: string;
   url: string;
-  /** People, bots excluded. A LOWER BOUND when `sampled` — see the note on the page. */
-  people: number;
+  /**
+   * Человеко-дни, боты исключены: сумма посуточных уникальных за окно, а не число людей.
+   * Идентификатор живёт одни сутки, поэтому вернувшийся человек считается снова — см. пояснение
+   * на самой странице и `people_seen` в `src/stats.ts`. Нижняя граница, когда `sampled`.
+   */
+  people_days: number;
   page_views: number;
   /** Page views that saw a scroll, click or keypress. The hardest signal here to fake. */
   engaged: number;
@@ -91,7 +95,7 @@ export type OpenReport = {
   generated_at: string;
   /** Which counter produced these. Named so a reader never has to guess whose arithmetic it is. */
   source: "own-counter";
-  /** True when Analytics Engine dropped rows in this window, which makes `people` a floor. */
+  /** True when Analytics Engine dropped rows in this window, which makes `people_days` a floor. */
   sampled: boolean;
   products: OpenProduct[];
   /**
@@ -133,7 +137,7 @@ export async function buildOpenReport(
     report.products.push({
       id: site.id,
       url: site.url,
-      people: rows.reduce((sum, row) => sum + row.people_seen, 0),
+      people_days: rows.reduce((sum, row) => sum + row.people_seen, 0),
       page_views: rows.reduce((sum, row) => sum + row.page_views, 0),
       engaged: rows.reduce((sum, row) => sum + row.engaged, 0),
       ai_requests: 0,
@@ -233,7 +237,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 <h1>Open numbers</h1>
 <p class="lede">Traffic for the products below, published automatically. Nobody types these in
 and nobody can round them up — the page asks the same API the private dashboard does, and the
-numbers are small on purpose: they are people, not requests.</p>
+numbers are small on purpose: they are visits by browsers, not requests.</p>
 <div class="card"><div id="t">Loading…</div></div>
 <div class="card" id="c" style="margin-top:20px;display:none">
   <h2 style="font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px">Events per day</h2>
@@ -248,10 +252,17 @@ numbers are small on purpose: they are people, not requests.</p>
       sampling. They also count every scraper: on one of these domains the edge reported twenty
       thousand &ldquo;visitors&rdquo; over a window in which two people had actually visited. A
       filtered undercount beats an unfiltered overcount, especially on a page like this one.</li>
-    <li><strong>People is a floor, not an estimate.</strong> Above a certain rate the store keeps
+    <li><strong>People-days are not people.</strong> The anonymous id is derived at the edge and
+      rotates at midnight UTC, so somebody who comes back on Tuesday is counted again. Over a
+      month this column is the sum of daily uniques, which is larger than the audience by
+      however loyal that audience is. We publish it under its real name rather than under a
+      flattering one, and the number that does measure return visits exists only for apps,
+      where the id survives longer than a day.</li>
+    <li><strong>And it is a floor.</strong> Above a certain rate the store keeps
       a sample of rows, and a dropped row takes its anonymous id with it — no weighting brings
-      back a value that was never written. Page views and engaged visits stay exact, because
-      those are counts and counts can be weighted.</li>
+      back a value that was never written. So this column overstates by return visits and
+      understates by sampling, and neither error has a known size. Page views and engaged visits
+      stay exact, because those are counts and counts can be weighted.</li>
     <li><strong>Engaged</strong> means a page view that saw a scroll, a click or a keypress.
       Loading a page is what a crawler does; interacting with it is what a person does.</li>
     <li><strong>AI agents are counted per hostname, and verified by Cloudflare</strong> against
@@ -284,15 +295,16 @@ var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'
 fetch('/open.json',{cache:'no-cache'}).then(function(r){return r.json()}).then(function(d){
   var el=document.getElementById('t');
   if(!d.products||!d.products.length){el.textContent='Nothing is published yet.';return}
-  var h='<table><thead><tr><th>Product</th><th class="n">People</th><th class="n">Page views</th>'+
+  var h='<table><thead><tr><th>Product</th><th class="n">People-days</th><th class="n">Page views</th>'+
         '<th class="n">Engaged</th><th class="n">AI agents</th></tr></thead><tbody>';
   d.products.forEach(function(p){
     h+='<tr><td><a href="'+esc(p.url)+'">'+esc(p.id)+'</a>'+
        '<div class="sub">'+esc(p.url.split('//').pop())+'</div></td>'+
-       '<td class="n">'+fmt(p.people)+(d.sampled?'<span class="sub">+</span>':'')+'</td>'+
+       '<td class="n">'+fmt(p.people_days)+(d.sampled?'<span class="sub">+</span>':'')+'</td>'+
        '<td class="n">'+fmt(p.page_views)+'</td><td class="n">'+fmt(p.engaged)+'</td>'+
        '<td class="n">'+fmt(p.ai_requests||0)+'</td></tr>'});
-  h+='</tbody></table><p class="sub" style="margin:14px 0 0">People, page views and engaged: last '+
+  h+='</tbody></table><p class="sub" style="margin:14px 0 0">People-days (daily uniques added up, '+
+     'not unique humans), page views and engaged: last '+
      d.window_days+' days'+(d.sampled?'; \u201c+\u201d marks a lower bound, the store sampled this window':'')+
      '. AI agents: last 24 hours, the widest window this dataset allows.</p>';
   if(d.ai_agents&&d.ai_agents.agents.length){

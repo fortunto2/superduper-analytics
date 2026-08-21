@@ -73,9 +73,11 @@ describe("tools", () => {
       "agent_traffic",
       "campaigns",
       "content",
+      "conversion",
       "counter_coverage",
       "goals",
       "list_products",
+      "retention",
       "search",
       "traffic",
     ]);

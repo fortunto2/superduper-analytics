@@ -22,6 +22,8 @@ import { handleMcp } from "./mcp";
 import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchStats } from "./stats";
+import { fetchRetention } from "./retention";
+import { fetchConversion } from "./conversion";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
 import { rollupDay, rollupPages } from "./rollup";
 import { syncSearchConsole } from "./search/sync";
@@ -334,6 +336,60 @@ app.get("/v1/overview", async (c) => {
   if (!result.ok) return c.json(result.body, result.status as 400 | 500 | 502);
 
   const response = c.json(result.overview);
+  response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
+});
+
+/**
+ * Возвраты в приложениях. Отдельный маршрут, а не поле в /v1/stats, по двум причинам.
+ *
+ * Первая — цена: обзор уже стоит семи запросов к метрируемому SQL API, и восьмой платился бы на
+ * каждый рендер панели ради числа, которое смотрят раз в неделю.
+ *
+ * Вторая важнее. Это единственный ответ на «сколько людей и вернулись ли они», и он существует
+ * только там, где идентификатор живёт дольше суток — то есть в приложениях. Лежи он строкой
+ * внутри общей статистики, рано или поздно кто-нибудь сложил бы его с веб-числами, а сложение
+ * человеко-дней с установками — ровно та ошибка, от которой весь этот проект отгораживается.
+ */
+app.get("/v1/retention", async (c) => {
+  const cache = caches.default;
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
+  if (cached !== undefined) return cached;
+
+  const result = await fetchRetention(
+    c.env,
+    Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS),
+    Date.now(),
+  );
+  if (!result.ok) return c.json(result.body, result.status);
+
+  const response = c.json(result.retention);
+  response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
+});
+
+/**
+ * Цель на фоне просмотров той же страницы — «что улучшать». Тоже отдельно и по той же цене:
+ * один запрос по требованию вместо восьмого на каждый рендер.
+ */
+app.get("/v1/conversion", async (c) => {
+  const cache = caches.default;
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
+  if (cached !== undefined) return cached;
+
+  const rawMin = c.req.query("min_views");
+  const result = await fetchConversion(
+    c.env,
+    Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS),
+    rawMin === undefined ? undefined : Math.trunc(Number(rawMin)),
+  );
+  if (!result.ok) return c.json(result.body, result.status);
+
+  const response = c.json(result.conversion);
   response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
   c.executionCtx.waitUntil(cache.put(key, response.clone()));
   return response;

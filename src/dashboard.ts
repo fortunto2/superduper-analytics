@@ -250,22 +250,26 @@ function render(o){
 
   var h='';
   if(st.sampling_active) h+='<div class="note"><strong>Sampling is active.</strong> Event counts are '+
-    'weighted and exact. “People” is a lower bound: a dropped row takes its anonymous id with '+
-    'it, and no weighting brings back a value that was never written.</div>';
+    'weighted and exact. “People-days” is a lower bound: a dropped row takes its anonymous id '+
+    'with it, and no weighting brings back a value that was never written.</div>';
 
   // People come from OUR data, bot-filtered, not from the edge. The edge loses nothing to
   // sampling but counts every scraper: on life2film it reported 20k uniques where two people
   // had actually visited. A filtered undercount beats an unfiltered overcount.
   h+=pickerHtml(o,cur);
 
-  var people=cur?sum(function(r){return r.people_seen}):st.total_people;
+  // Человеко-дни, не люди: идентификатор на вебе живёт сутки, и вернувшийся считается снова.
+  // Название колонки говорит это вслух — под словом People число читалось как аудитория и было
+  // завышено ровно на возвраты. Возвраты меряет только retention, и только у приложений.
+  // (Никаких обратных кавычек в этом файле: он целиком — template literal, и кавычка его рвёт.)
+  var peopleDays=cur?sum(function(r){return r.people_seen}):st.people_days;
   var views=cur?sum(function(r){return r.page_views}):st.total_page_views;
   var engaged=cur?sum(function(r){return r.engaged}):st.total_engaged;
   var bots=cur?sum(function(r){return r.bot_events}):st.total_bot_events;
   var allEvents=cur?sum(function(r){return r.events}):st.total_events;
   var botShare=allEvents?Math.round(bots/allEvents*100):0;
   h+='<div class="tiles">'+
-    tile('People',fmt(people),'ours, bots excluded',true)+
+    tile('People-days',fmt(peopleDays),'daily uniques added up, not humans',true)+
     tile('Page views',fmt(views),'bots excluded')+
     tile('Engaged',fmt(engaged),'scrolled, clicked or typed')+
     tile('Bot events',fmt(bots),botShare+'% of everything received')+
@@ -522,7 +526,7 @@ function render(o){
   h+='<div class="card"><h2>Sources</h2>';
   if(!rows.length) h+='<p class="empty">No events in this window.</p>';
   else{
-    h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People</th>'+
+    h+='<table><thead><tr><th>Source</th><th>Platform</th><th class="n">People-days</th>'+
        '<th class="n">Page views</th><th class="n">Engaged</th><th class="n">Bot events</th>'+
        '<th class="n">AI agents, 24h</th></tr></thead><tbody>';
     // Источники приходят уже сгруппированными по домену. Показываем домен один раз на

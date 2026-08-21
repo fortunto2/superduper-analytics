@@ -78,6 +78,9 @@ export async function rollupDay(
   const binds = sources.flatMap((row) =>
     (
       [
+        // Здесь имя `people` честное, в отличие от суммы за окно: свёртка пишет ОДНИ сутки, а
+        // за одни сутки идентификатор не успевает провернуться, и distinct — это люди. Складывать
+        // эти строки за месяц и называть сумму людьми уже нельзя — см. `people_days` в stats.ts.
         ["people", row.people_seen],
         ["page_views", row.page_views],
         ["engaged", row.engaged],
