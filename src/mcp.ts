@@ -357,6 +357,8 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             `day (${pct(r.return_rate)}), ${r.active_now} active in the last week, ` +
             `${r.events_per_install.toFixed(1)} events per install, median ` +
             `${r.median_days_active} active day(s)` +
+            `, ${r.cohorts.map(c => `D${c.day} ${c.rate === null ? "n/a" : `${Math.round(c.rate * 100)}%`}` +
+              ` (${c.returned}/${c.eligible})`).join(", ")}` +
             (r.too_new > 0 ? `, ${r.too_new} too new to ask` : "") +
             (r.max_sample > 1 ? " — SAMPLED, installs is a floor" : ""),
         );
@@ -370,6 +372,10 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
           "",
           ...(lines.length > 0 ? lines : ["No app sent an event with an install id in this window."]),
           "",
+          "D1/D3/D7 = came back on exactly that day after the first one, counted only among " +
+            "installs old enough to have reached it — which is why the denominators differ and " +
+            "why a young counter shows n/a rather than zero. Unlike the overall rate, these do " +
+            "not grow with the window, so two products with counters of different ages compare.",
           "Returned = the same install was active on more than one calendar day. Installs first " +
             "seen within the last two days are excluded from the rate: they have not had the " +
             "chance to return, and leaving them in makes a growing app look like a leaking one.",

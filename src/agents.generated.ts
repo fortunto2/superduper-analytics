@@ -72,6 +72,7 @@ export const AI_AGENTS: readonly (readonly [string, string])[] = [
   ["OAI-SearchBot", "OpenAI"],
   ["panscient.com", "Panscient"],
   ["PerplexityBot", "Perplexity"],
+  ["Reflectionbot", "Reflection"],
   ["AddSearchBot", ""],
   ["Ai2Bot-Dolma", "Ai2"],
   ["anthropic-ai", "Anthropic"],

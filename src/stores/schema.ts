@@ -29,6 +29,13 @@ export const METRICS = {
   /** First-time downloads. NOT redownloads — a reinstall is not a new person. */
   installs: "installs",
   redownloads: "redownloads",
+  /**
+   * Удаления, как их видит Apple. Единственная метрика здесь, которой НЕТ аналога в наших
+   * событиях и быть не может: счётчик видит тишину, а тишина одинаково выглядит и когда
+   * приложение удалили, и когда телефон неделю пролежал. Сравнивать с `installs` за тот же
+   * день допустимо, вычитать одно из другого — нет: удаляют не тех, кто поставил сегодня.
+   */
+  deletes: "deletes",
   updates: "updates",
   /** Money, in the store's reporting currency converted to USD by the store itself. */
   proceeds_usd: "proceeds_usd",

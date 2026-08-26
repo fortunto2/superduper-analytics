@@ -35,21 +35,49 @@ export const MATURITY_DAYS = 2;
 export const ACTIVE_WINDOW_DAYS = 7;
 
 /**
- * Потолок строк: одна строка на установку. При нынешних объёмах (десятки) это с запасом, а
- * когда упрёмся — `truncated` скажет об этом вслух, вместо того чтобы молча показать долю,
- * посчитанную по случайной половине установок.
+ * Какие сутки после установки считать. Первые, третьи и седьмые.
+ *
+ * D1 ловит провал онбординга, D7 — то, стал ли продукт привычкой; D3 стоит между ними, потому
+ * что на маленьких числах разрыв между 1 и 7 слишком велик, чтобы понять, где именно теряют.
+ * Тридцатых суток здесь нет намеренно: хранилище держит события 90 дней, но счётчикам
+ * от роду недели, и D30 сейчас был бы колонкой из прочерков.
  */
-export const MAX_INSTALLS = 10000;
+export const COHORT_DAYS = [1, 3, 7] as const;
 
-/** Одна установка: во сколько разных суток была активна и когда её видели впервые и в последний раз. */
-export type InstallRow = {
+/**
+ * Потолок строк, а строка теперь — установка-день, не установка. Тысяча установок, активных
+ * по десять дней каждая, даёт десять тысяч строк, поэтому потолок поднят соответственно.
+ * Упрёмся — `truncated` скажет вслух, вместо того чтобы молча показать долю, посчитанную по
+ * случайной части выборки.
+ */
+export const MAX_INSTALLS = 50000;
+
+/**
+ * Один день одной установки. Гранулярность выбрана самой мелкой из осмысленных.
+ *
+ * Раньше запрос возвращал уже свёрнутую установку — `days_active`, первый день и последний. Для
+ * «вернулся хоть раз» этого хватало, а для D1 нет: «активна в трёх разных сутках» и «активна на
+ * следующий день после установки» — разные вопросы, и второй из первого не выводится. Свернуть
+ * дни в число можно в памяти, развернуть число обратно в дни нельзя.
+ */
+export type InstallDay = {
   source: string;
   platform: string;
   /** Install-scoped UUID. Наружу не отдаётся — по нему только считают, его не показывают. */
   anon: string;
-  /** Число РАЗНЫХ суток с событиями. Ровно 1 — установка не вернулась ни разу. */
-  days_active: number;
   /** YYYY-MM-DD, UTC. */
+  day: string;
+  events: number;
+  max_sample: number;
+};
+
+/** Установка, свёрнутая из своих дней. */
+export type InstallRow = {
+  source: string;
+  platform: string;
+  anon: string;
+  /** Все сутки с событиями. Именно множество, а не счётчик — см. `InstallDay`. */
+  days: Set<string>;
   first_day: string;
   last_day: string;
   events: number;
@@ -87,11 +115,34 @@ export type RetentionRow = {
   active_now: number;
   /** Событий на установку. Десять запусков на установку и два — это два разных продукта. */
   events_per_install: number;
-  /** Медиана `days_active` среди зрелых. Устойчивее среднего на десятках установок. */
+  /** Медиана числа активных суток среди зрелых. Устойчивее среднего на десятках установок. */
   median_days_active: number;
+  /**
+   * Классические когорты: вернулась ли установка ИМЕННО на N-е сутки после первой.
+   *
+   * Это не то же самое, что `return_rate`. Тот отвечает «вернулась хоть когда-нибудь за окно» и
+   * растёт вместе с длиной окна — сравнивать по нему два продукта с разным возрастом счётчика
+   * нельзя. D1 привязан к возрасту установки, а не к окну, поэтому сравним всегда.
+   *
+   * Знаменатель у каждого свой: спросить «вернулся ли на седьмой день» можно только у той
+   * установки, которой уже есть семь дней. Отсюда `eligible` в каждой строке — без него D7
+   * выглядел бы нулевым просто потому, что счётчик поставили в прошлый вторник.
+   */
+  cohorts: DayCohort[];
   events: number;
   /** >1 — установок было больше: сэмплирование уносит строку вместе с её идентификатором. */
   max_sample: number;
+};
+
+/** Одна когорта: сколько из тех, кого можно было спросить, вернулись на N-е сутки. */
+export type DayCohort = {
+  /** Через сколько суток после первого дня смотрим. */
+  day: number;
+  /** Установок, доживших до этого дня, — знаменатель. */
+  eligible: number;
+  returned: number;
+  /** `returned / eligible`. `null`, когда спрашивать ещё некого. */
+  rate: number | null;
 };
 
 export type Retention = {
@@ -131,9 +182,7 @@ export function buildRetentionQuery(dataset: string, days: number): string {
     "  blob1 AS source,",
     "  blob2 AS platform,",
     "  blob8 AS anon,",
-    "  count(DISTINCT toDate(timestamp)) AS days_active,",
-    "  min(toDate(timestamp)) AS first_day,",
-    "  max(toDate(timestamp)) AS last_day,",
+    "  toDate(timestamp) AS day,",
     "  sum(_sample_interval) AS events,",
     "  max(_sample_interval) AS smpl",
     `FROM ${dataset}`,
@@ -145,7 +194,7 @@ export function buildRetentionQuery(dataset: string, days: number): string {
     // одну общую установку значило бы склеить всех пользователей в одного очень лояльного.
     "  AND blob8 != ''",
     "  AND blob9 != 'bot'",
-    "GROUP BY source, platform, anon",
+    "GROUP BY source, platform, anon, day",
     "ORDER BY events DESC",
     `LIMIT ${MAX_INSTALLS}`,
     "FORMAT JSON",
@@ -155,24 +204,55 @@ export function buildRetentionQuery(dataset: string, days: number): string {
 type SqlResponse = { data?: Record<string, unknown>[] };
 
 /** Диалект отдаёт агрегаты строками достаточно часто, чтобы приведение не было опциональным. */
-export function parseInstalls(payload: unknown): InstallRow[] {
+export function parseInstallDays(payload: unknown): InstallDay[] {
   const rows = (payload as SqlResponse | null)?.data;
   if (!Array.isArray(rows)) return [];
   return rows.map((row) => ({
     source: String(row.source ?? ""),
     platform: String(row.platform ?? ""),
     anon: String(row.anon ?? ""),
-    days_active: Number(row.days_active ?? 0),
-    first_day: String(row.first_day ?? ""),
-    last_day: String(row.last_day ?? ""),
+    day: String(row.day ?? ""),
     events: Number(row.events ?? 0),
     max_sample: Number(row.smpl ?? 1),
   }));
 }
 
+/** Дни → установки. Множество дней сохраняется целиком: из него считаются когорты. */
+export function foldInstalls(days: InstallDay[]): InstallRow[] {
+  const byInstall = new Map<string, InstallRow>();
+  for (const row of days) {
+    const key = `${row.source} ${row.platform} ${row.anon}`;
+    const seen = byInstall.get(key);
+    if (seen === undefined) {
+      byInstall.set(key, {
+        source: row.source,
+        platform: row.platform,
+        anon: row.anon,
+        days: new Set([row.day]),
+        first_day: row.day,
+        last_day: row.day,
+        events: row.events,
+        max_sample: row.max_sample,
+      });
+      continue;
+    }
+    seen.days.add(row.day);
+    if (row.day < seen.first_day) seen.first_day = row.day;
+    if (row.day > seen.last_day) seen.last_day = row.day;
+    seen.events += row.events;
+    seen.max_sample = Math.max(seen.max_sample, row.max_sample);
+  }
+  return [...byInstall.values()];
+}
+
 /** YYYY-MM-DD в UTC, ровно как `toDate(timestamp)` на той стороне. */
 function utcDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Дата плюс сутки, строкой. Через UTC-миллисекунды, чтобы переход месяца не пришлось помнить. */
+function addDays(day: string, count: number): string {
+  return utcDay(Date.parse(`${day}T00:00:00Z`) + count * 86_400_000);
 }
 
 function median(values: number[]): number {
@@ -193,6 +273,7 @@ function median(values: number[]): number {
 export function summarize(installs: InstallRow[], now: number): RetentionRow[] {
   const cutoff = utcDay(now - MATURITY_DAYS * 86_400_000);
   const activeFrom = utcDay(now - ACTIVE_WINDOW_DAYS * 86_400_000);
+  const today = utcDay(now);
 
   const groups = new Map<string, InstallRow[]>();
   for (const row of installs) {
@@ -207,7 +288,7 @@ export function summarize(installs: InstallRow[], now: number): RetentionRow[] {
     const [source = "", platform = ""] = key.split(" ");
     // Зрелая — та, чей первый день не позже границы: у неё была хотя бы одна возможность вернуться.
     const mature = rows.filter((r) => r.first_day <= cutoff);
-    const returned = mature.filter((r) => r.days_active > 1);
+    const returned = mature.filter((r) => r.days.size > 1);
     const events = rows.reduce((sum, r) => sum + r.events, 0);
     const firstDays = rows.map((r) => r.first_day).filter((d) => d !== "");
     out.push({
@@ -221,7 +302,19 @@ export function summarize(installs: InstallRow[], now: number): RetentionRow[] {
       too_new: rows.length - mature.length,
       active_now: rows.filter((r) => r.last_day >= activeFrom).length,
       events_per_install: rows.length > 0 ? events / rows.length : 0,
-      median_days_active: median(mature.map((r) => r.days_active)),
+      median_days_active: median(mature.map((r) => r.days.size)),
+      cohorts: COHORT_DAYS.map((day) => {
+        // Спрашивать можно только тех, у кого этот день уже наступил. Остальные не «не
+        // вернулись» — их просто ещё не о чем спрашивать, и в знаменателе им не место.
+        const eligible = rows.filter((r) => addDays(r.first_day, day) <= today);
+        const returned = eligible.filter((r) => r.days.has(addDays(r.first_day, day)));
+        return {
+          day,
+          eligible: eligible.length,
+          returned: returned.length,
+          rate: eligible.length > 0 ? returned.length / eligible.length : null,
+        };
+      }),
       events,
       max_sample: rows.reduce((max, r) => Math.max(max, r.max_sample), 1),
     });
@@ -265,14 +358,17 @@ export async function fetchRetention(
     };
   }
 
-  const installs = parseInstalls(await response.json());
+  const rows = parseInstallDays(await response.json());
+  const installs = foldInstalls(rows);
   const days_seen = installs.map((r) => r.first_day).filter((d) => d !== "");
   return {
     ok: true,
     retention: {
       window_days: days,
       first_day_seen: days_seen.length > 0 ? days_seen.reduce((a, b) => (a < b ? a : b)) : undefined,
-      truncated: installs.length >= MAX_INSTALLS,
+      // Потолок теперь считается по СТРОКАМ, а не по установкам: строка — это установка-день,
+      // и упереться в него можно раньше, чем установок станет столько же.
+      truncated: rows.length >= MAX_INSTALLS,
       rows: summarize(installs, now),
     },
   };

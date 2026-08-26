@@ -12,9 +12,11 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVE_WINDOW_DAYS,
   buildRetentionQuery,
+  COHORT_DAYS,
   fetchRetention,
+  foldInstalls,
   MATURITY_DAYS,
-  parseInstalls,
+  parseInstallDays,
   summarize,
   type InstallRow,
 } from "../src/retention";
@@ -26,17 +28,27 @@ const env = { DATASET: "superduper_events", CF_ACCOUNT_ID: "acc", CF_API_TOKEN: 
 const NOW = Date.UTC(2026, 7, 21, 12, 0, 0);
 const day = (offset: number) => new Date(NOW + offset * 86_400_000).toISOString().slice(0, 10);
 
-function install(over: Partial<InstallRow> = {}): InstallRow {
+/**
+ * Установка, заданная днём первого запуска и смещениями активных суток от него.
+ *
+ * `active: [0, 1]` — пришёл и вернулся назавтра; `[0, 5]` — вернулся на шестые сутки, что для
+ * D1 означает «не вернулся», а для «вернулся хоть раз» — что вернулся. Ровно это различие
+ * когорты и добавляют, поэтому фикстура задаёт дни, а не их количество.
+ */
+function install(over: Partial<InstallRow> & { first?: number; active?: number[] } = {}): InstallRow {
+  const { first = -10, active = [0], ...rest } = over;
+  const days = new Set(active.map((offset) => day(first + offset)));
+  const sorted = [...days].sort();
   return {
     source: "life2film",
     platform: "ios",
     anon: "uuid",
-    days_active: 1,
-    first_day: day(-10),
-    last_day: day(-10),
+    days,
+    first_day: sorted[0] ?? day(first),
+    last_day: sorted[sorted.length - 1] ?? day(first),
     events: 1,
     max_sample: 1,
-    ...over,
+    ...rest,
   };
 }
 
@@ -55,8 +67,11 @@ describe("buildRetentionQuery", () => {
     expect(sql).toContain("blob9 != 'bot'");
   });
 
-  it("counts distinct calendar days, which is what a return is", () => {
-    expect(sql).toContain("count(DISTINCT toDate(timestamp)) AS days_active");
+  it("returns a row per install-DAY, because a cohort needs the days themselves", () => {
+    expect(sql).toContain("toDate(timestamp) AS day");
+    expect(sql).toContain("GROUP BY source, platform, anon, day");
+    // Свёрнутое число суток здесь больше не считается: из него не выводится «вернулся на первые».
+    expect(sql).not.toContain("days_active");
   });
 
   it("carries max(_sample_interval) so a floor can be labelled as one", () => {
@@ -74,18 +89,78 @@ describe("buildRetentionQuery", () => {
   });
 });
 
-describe("parseInstalls", () => {
+describe("parseInstallDays / foldInstalls", () => {
   it("coerces the strings the SQL API returns for aggregates", () => {
-    const rows = parseInstalls({
-      data: [{ source: "s", platform: "ios", anon: "u", days_active: "3", first_day: "2026-08-01", last_day: "2026-08-03", events: "42", smpl: 1 }],
+    const rows = parseInstallDays({
+      data: [{ source: "s", platform: "ios", anon: "u", day: "2026-08-01", events: "42", smpl: 1 }],
     });
-    expect(rows[0]?.days_active).toBe(3);
+    expect(rows[0]?.day).toBe("2026-08-01");
     expect(rows[0]?.events).toBe(42);
   });
 
   it("returns nothing rather than throwing when the payload has no rows", () => {
-    expect(parseInstalls(null)).toEqual([]);
-    expect(parseInstalls({})).toEqual([]);
+    expect(parseInstallDays(null)).toEqual([]);
+    expect(parseInstallDays({})).toEqual([]);
+  });
+
+  it("сворачивает дни в установку, сохраняя множество суток целиком", () => {
+    const [one] = foldInstalls([
+      { source: "s", platform: "ios", anon: "u", day: "2026-08-03", events: 2, max_sample: 1 },
+      { source: "s", platform: "ios", anon: "u", day: "2026-08-01", events: 5, max_sample: 4 },
+    ]);
+    expect(one?.days).toEqual(new Set(["2026-08-01", "2026-08-03"]));
+    expect(one?.first_day).toBe("2026-08-01");
+    expect(one?.last_day).toBe("2026-08-03");
+    expect(one?.events).toBe(7);
+    // Худший интервал по установке, а не последний увиденный.
+    expect(one?.max_sample).toBe(4);
+  });
+
+  it("разные anon остаются разными установками", () => {
+    const folded = foldInstalls([
+      { source: "s", platform: "ios", anon: "a", day: "2026-08-01", events: 1, max_sample: 1 },
+      { source: "s", platform: "ios", anon: "b", day: "2026-08-01", events: 1, max_sample: 1 },
+    ]);
+    expect(folded).toHaveLength(2);
+  });
+});
+
+describe("дневные когорты", () => {
+  const cohort = (rows: InstallRow[], n: number) =>
+    summarize(rows, NOW)[0]?.cohorts.find((c) => c.day === n);
+
+  it("D1 — вернулся ИМЕННО на следующие сутки, а не когда-нибудь", () => {
+    const rows = [
+      install({ anon: "d1", first: -8, active: [0, 1] }),
+      // Вернулся на шестые сутки: для «хоть раз» это возврат, для D1 — нет.
+      install({ anon: "late", first: -8, active: [0, 6] }),
+    ];
+    expect(cohort(rows, 1)).toMatchObject({ eligible: 2, returned: 1 });
+    // При этом обе установки считаются вернувшимися в общем `return_rate`.
+    expect(summarize(rows, NOW)[0]?.returned).toBe(2);
+  });
+
+  it("не спрашивает про седьмые сутки ту установку, которой три дня", () => {
+    const rows = [install({ anon: "young", first: -3, active: [0] })];
+    expect(cohort(rows, 7)).toMatchObject({ eligible: 0, rate: null });
+    expect(cohort(rows, 1)).toMatchObject({ eligible: 1, returned: 0, rate: 0 });
+  });
+
+  it("считает долю по своему знаменателю на каждой когорте", () => {
+    const rows = [
+      install({ anon: "a", first: -9, active: [0, 1, 7] }),
+      install({ anon: "b", first: -9, active: [0, 1] }),
+      install({ anon: "c", first: -9, active: [0] }),
+      install({ anon: "young", first: -2, active: [0, 1] }),
+    ];
+    // D1: спрашиваем всех четверых, вернулись трое.
+    expect(cohort(rows, 1)).toMatchObject({ eligible: 4, returned: 3 });
+    // D7: младшую спросить нельзя, из троих вернулась одна.
+    expect(cohort(rows, 7)).toMatchObject({ eligible: 3, returned: 1 });
+  });
+
+  it("отдаёт ровно те когорты, что объявлены", () => {
+    expect(summarize([install()], NOW)[0]?.cohorts.map((c) => c.day)).toEqual([...COHORT_DAYS]);
   });
 });
 
@@ -93,9 +168,9 @@ describe("summarize", () => {
   it("keeps an install that has not had the chance to return OUT of the rate", () => {
     const rows = summarize(
       [
-        install({ anon: "old", first_day: day(-10), last_day: day(-9), days_active: 2 }),
+        install({ anon: "old", first: -10, active: [0, 1] }),
         // Поставлено сегодня: вернуться было физически некогда.
-        install({ anon: "fresh", first_day: day(0), last_day: day(0), days_active: 1 }),
+        install({ anon: "fresh", first: 0, active: [0] }),
       ],
       NOW,
     );
@@ -110,9 +185,9 @@ describe("summarize", () => {
   it("counts a return as activity on more than one calendar day", () => {
     const rows = summarize(
       [
-        install({ anon: "a", days_active: 1, first_day: day(-8), last_day: day(-8) }),
-        install({ anon: "b", days_active: 2, first_day: day(-8), last_day: day(-7) }),
-        install({ anon: "c", days_active: 5, first_day: day(-8), last_day: day(-3) }),
+        install({ anon: "a", first: -8, active: [0] }),
+        install({ anon: "b", first: -8, active: [0, 1] }),
+        install({ anon: "c", first: -8, active: [0, 1, 2, 3, 5] }),
       ],
       NOW,
     );
@@ -121,7 +196,7 @@ describe("summarize", () => {
   });
 
   it("says n/a instead of zero when nobody is old enough to ask", () => {
-    const rows = summarize([install({ first_day: day(0), last_day: day(0) })], NOW);
+    const rows = summarize([install({ first: 0, active: [0] })], NOW);
     // Ноль читался бы как «никто не вернулся»; здесь никого ещё и не спрашивали.
     expect(rows[0]?.return_rate).toBeNull();
     expect(rows[0]?.mature).toBe(0);
@@ -130,8 +205,8 @@ describe("summarize", () => {
   it("counts active_now from the last day seen, not from the first", () => {
     const rows = summarize(
       [
-        install({ anon: "живой", first_day: day(-20), last_day: day(-1), days_active: 4 }),
-        install({ anon: "ушёл", first_day: day(-20), last_day: day(-20), days_active: 1 }),
+        install({ anon: "живой", first: -20, active: [0, 1, 2, 19] }),
+        install({ anon: "ушёл", first: -20, active: [0] }),
       ],
       NOW,
     );
@@ -153,8 +228,8 @@ describe("summarize", () => {
   it("reports events per install, which separates a used app from an opened one", () => {
     const rows = summarize(
       [
-        install({ anon: "a", events: 150, days_active: 4, first_day: day(-6), last_day: day(-2) }),
-        install({ anon: "b", events: 50, days_active: 2, first_day: day(-6), last_day: day(-5) }),
+        install({ anon: "a", events: 150, first: -6, active: [0, 1, 2, 4] }),
+        install({ anon: "b", events: 50, first: -6, active: [0, 1] }),
       ],
       NOW,
     );
@@ -164,10 +239,10 @@ describe("summarize", () => {
   it("takes the median over MATURE installs only, so fresh ones cannot drag it to 1", () => {
     const rows = summarize(
       [
-        install({ anon: "a", days_active: 4, first_day: day(-9), last_day: day(-5) }),
-        install({ anon: "b", days_active: 6, first_day: day(-9), last_day: day(-3) }),
-        install({ anon: "new1", days_active: 1, first_day: day(0), last_day: day(0) }),
-        install({ anon: "new2", days_active: 1, first_day: day(0), last_day: day(0) }),
+        install({ anon: "a", first: -9, active: [0, 1, 2, 4] }),
+        install({ anon: "b", first: -9, active: [0, 1, 2, 3, 4, 6] }),
+        install({ anon: "new1", first: 0, active: [0] }),
+        install({ anon: "new2", first: 0, active: [0] }),
       ],
       NOW,
     );
@@ -179,8 +254,8 @@ describe("summarize", () => {
     // запуске новой сборки. Без этой даты низкая доля возвратов читается как плохой продукт.
     const rows = summarize(
       [
-        install({ anon: "a", first_day: day(-3), last_day: day(-1), days_active: 2 }),
-        install({ anon: "b", first_day: day(-5), last_day: day(-4), days_active: 2 }),
+        install({ anon: "a", first: -3, active: [0, 2] }),
+        install({ anon: "b", first: -5, active: [0, 1] }),
       ],
       NOW,
     );
