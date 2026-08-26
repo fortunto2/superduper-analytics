@@ -8,6 +8,7 @@
  * aggregate here is built weighted, and `buildQuery` is pure so a test can read the SQL and
  * prove it.
  */
+import { METRIC_SLOTS, metricSlot } from "./registry";
 import { RETENTION_DAYS } from "./schema";
 
 export type SourceTotal = {
@@ -515,4 +516,111 @@ export async function fetchStats(
       goals: goals.ok ? parseGoals(await goals.json()) : [],
     },
   };
+}
+
+/**
+ * Одна числовая размерность в разрезе продукта и события.
+ *
+ * `avg` взвешено через `_sample_interval`, как всё в этом файле. Невзвешенное среднее по
+ * сэмплированным строкам смещено ровно настолько, насколько неравномерно сэмплирование, и
+ * ошибка не видна: число выглядит правдоподобным.
+ */
+export type MetricTotal = {
+  source: string;
+  /** Имя события. Метрика без него бессмысленна: `film_seconds` на рендере и на превью — разное. */
+  event: string;
+  /** Событий с этим ключом, взвешенно. */
+  events: number;
+  avg: number;
+  min: number;
+  max: number;
+  /** Сумма значений. Осмысленна для счётных величин и бессмысленна для долей — знать это должен читатель. */
+  total: number;
+};
+
+export type Metric = { name: string; slot: number; window_days: number; rows: MetricTotal[] };
+
+/**
+ * Агрегат по одной метрике из реестра.
+ *
+ * Имя приходит снаружи и попадает в SQL, поэтому оно НЕ подставляется, а ищется в списке слотов:
+ * в запрос уезжает найденная позиция (число) и то же имя, уже доказавшее, что оно из реестра.
+ * Строки, где ключа не было, отсекаются по blob11 — иначе ноль «не прислали» смешался бы с
+ * нулём «прислали ноль» и утянул бы среднее. JSON здесь читается как строка, что диалект умеет,
+ * а не как JSON, чего он не умеет.
+ */
+export function buildMetricQuery(dataset: string, name: string, days: number): string {
+  const slot = metricSlot(name);
+  if (slot === undefined) {
+    throw new Error(`"${name}" has no double slot — add it to registry/sources.yaml and run make gen`);
+  }
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+  }
+  const column = `double${slot}`;
+  return [
+    "SELECT",
+    "  blob1 AS source,",
+    "  blob3 AS event,",
+    "  sum(_sample_interval) AS events,",
+    `  sum(${column} * _sample_interval) / sum(_sample_interval) AS avg,`,
+    `  min(${column}) AS lo,`,
+    `  max(${column}) AS hi,`,
+    `  sum(${column} * _sample_interval) AS total`,
+    `FROM ${dataset}`,
+    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY`,
+    "  AND blob9 != 'bot'",
+    `  AND blob11 LIKE '%"${name}"%'`,
+    "GROUP BY source, event",
+    "ORDER BY events DESC",
+    "LIMIT 60",
+    "FORMAT JSON",
+  ].join("\n");
+}
+
+export function parseMetric(payload: unknown): MetricTotal[] {
+  const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    source: String(row.source ?? ""),
+    event: String(row.event ?? ""),
+    events: Number(row.events ?? 0),
+    avg: Number(row.avg ?? 0),
+    min: Number(row.lo ?? 0),
+    max: Number(row.hi ?? 0),
+    total: Number(row.total ?? 0),
+  }));
+}
+
+export async function fetchMetric(
+  env: StatsEnv,
+  name: string,
+  days: number,
+): Promise<{ ok: true; metric: Metric } | ({ ok: false } & StatsFailure)> {
+  const slot = metricSlot(name);
+  if (slot === undefined) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: "no_slot",
+        message: `"${name}" has no double slot; aggregating it is not possible in the hot store`,
+        // Список отдаётся в ответе: вопрос «а какие есть» возникает ровно здесь, и отправлять
+        // за ним в YAML на GitHub — лишний круг для того, кто уже держит ответ в руках.
+        available: [...METRIC_SLOTS],
+      },
+    };
+  }
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    return { ok: false, status: 400, body: { error: "bad_window", message: "days must be a positive integer" } };
+  }
+  if (env.CF_ACCOUNT_ID === undefined || env.CF_API_TOKEN === undefined) {
+    return { ok: false, status: 500, body: { error: "not_configured", message: "CF_ACCOUNT_ID and CF_API_TOKEN are unset" } };
+  }
+
+  const response = await askSql(env, buildMetricQuery(env.DATASET, name, days));
+  if (!response.ok) {
+    return { ok: false, status: 502, body: { error: "sql_api_failed", status: response.status, detail: await response.text() } };
+  }
+  return { ok: true, metric: { name, slot, window_days: days, rows: parseMetric(await response.json()) } };
 }

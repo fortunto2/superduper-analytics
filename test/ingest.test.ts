@@ -274,3 +274,67 @@ describe("the campaign that produced a visit", () => {
     expect(result.events[0]?.utm_campaign).toBeUndefined();
   });
 });
+
+/**
+ * Проверка приёма руками естественно тянется к строке из нулей — так и случилось на facealarm
+ * 2026-08-21. По форме это валидный UUID v4, и он занял место настоящей установки в подсчёте
+ * `DISTINCT anon`, на котором стоит весь ретеншен. Событие при этом ценно и должно доехать.
+ */
+describe("заглушки вместо идентификатора", () => {
+  const launch = (anon: string | undefined) => ({
+    source: "facealarm",
+    platform: "ios",
+    name: "app_launched",
+    ...(anon === undefined ? {} : { anon }),
+  });
+
+  it("отбрасывает нулевой UUID v4, оставляя само событие", () => {
+    const [event] = accepted(ingest({ events: [launch("00000000-0000-4000-8000-000000000000")] }, edge()));
+    expect(event?.name).toBe("app_launched");
+    expect(event?.anon).toBeUndefined();
+  });
+
+  it("отбрасывает и nil UUID, у которого нулевые даже версия с вариантом", () => {
+    const [event] = accepted(ingest({ events: [launch("00000000-0000-0000-0000-000000000000")] }, edge()));
+    expect(event?.anon).toBeUndefined();
+  });
+
+  it("отбрасывает словесные заглушки независимо от регистра и пробелов", () => {
+    for (const value of ["null", "UNDEFINED", " unknown ", "none", "nil", "n/a", "-", "   "]) {
+      const [event] = accepted(ingest({ events: [launch(value)] }, edge()));
+      expect(event?.anon, value).toBeUndefined();
+    }
+  });
+
+  it("настоящий install-scoped UUID проходит нетронутым", () => {
+    const real = "6095D7E8-1070-4034-9623-808989E265E5";
+    const [event] = accepted(ingest({ events: [launch(real)] }, edge()));
+    expect(event?.anon).toBe(real);
+  });
+
+  it("UUID с одним ненулевым разрядом — не заглушка", () => {
+    const almost = "00000000-0000-4000-8000-000000000001";
+    const [event] = accepted(ingest({ events: [launch(almost)] }, edge()));
+    expect(event?.anon).toBe(almost);
+  });
+
+  it("заглушка ведёт себя ровно как отсутствие поля: тот же откат к краю", () => {
+    const derived = "a1b2c3d4e5f60718";
+    const withPlaceholder = accepted(
+      ingest({ events: [launch("00000000-0000-4000-8000-000000000000")] }, edge({ anon: derived })),
+    );
+    const withoutField = accepted(ingest({ events: [launch(undefined)] }, edge({ anon: derived })));
+    expect(withPlaceholder[0]?.anon).toBe(withoutField[0]?.anon);
+  });
+
+  it("на вебе выведенный на краю идентификатор побеждает заглушку, как и любую присылку", () => {
+    const derived = "a1b2c3d4e5f60718";
+    const [event] = accepted(
+      ingest(
+        { events: [{ source: "superduperai", platform: "web", name: "page_viewed", anon: "null" }] },
+        edge({ anon: derived }),
+      ),
+    );
+    expect(event?.anon).toBe(derived);
+  });
+});

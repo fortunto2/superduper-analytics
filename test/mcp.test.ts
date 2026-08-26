@@ -77,6 +77,7 @@ describe("tools", () => {
       "counter_coverage",
       "goals",
       "list_products",
+      "metric",
       "retention",
       "search",
       "traffic",

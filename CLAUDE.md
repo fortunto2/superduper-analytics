@@ -41,7 +41,7 @@ src/registry.ts      is this source allowed — reads the generated list, never 
 src/anon.ts          the per-day edge-derived id. Nothing is stored on the device
 src/snippet.ts       the web counter, served at /sda.js. A string, not a build artefact
 src/sinks/           where events land. Dumb by design: positions, nothing else
-src/stats.ts         reads the hot store over the SQL API. Never writes
+src/stats.ts         reads the hot store over the SQL API. Never writes; сюда же /v1/metric
 src/retention.ts     возвраты в приложениях — «есть ли спрос». Веб сюда не попадает никогда
 src/conversion.ts    цель ÷ просмотры той же страницы — «что улучшать»
 src/stores/          what Apple and Google report: exact daily totals, in D1, not in AE
@@ -71,6 +71,20 @@ first has drifted.
    to `blob1..blob20` / `double1..double20`, and every query refers to them by position.
    Append only — reordering silently changes what historical data means. A slot without a
    matching `EnrichedEvent` field is a compile error, which is what keeps this enforceable.
+
+   Числовые размерности сверх `ts` живут не здесь, а в `registry/sources.yaml` → `metrics:`,
+   и попадают в `double2..double20` в порядке списка. Смысл разделения: новое число, которое
+   надо УМЕТЬ СЧИТАТЬ, — это одна строка YAML и `make gen`, без правки схемы и без деплоя
+   ради имени. Дисциплина не ослабла, а переехала: список тоже append-only, и `make check`
+   сверяет его с зафиксированным `registry.generated.ts`, отказываясь принять перестановку
+   или удаление. Слотов девятнадцать НА ВСЁ И НАВСЕГДА, словарь общий для всех источников
+   (иначе `double2` значил бы у разных продуктов разное), поэтому имена берутся
+   переиспользуемые — `days_since_first`, `items_total`, а не `photos_total`.
+
+   Слот получают не все числа, а те, по которым нужен агрегат в горячем хранилище. Остальное
+   уезжает в `metrics_json` — записано, читаемо построчно, ждёт архива. Ноль в слоте
+   неоднозначен («прислали ноль» и «не прислали» неразличимы), поэтому чтение (`/v1/metric`)
+   отсекает строки без ключа по `blob11 LIKE`, а не доверяет нулю.
 2. **Analytics Engine samples: `count()` is wrong, and unique counts are impossible.** Use
    `sum(_sample_interval)` and the weighted form of every aggregate — the plain ones return a
    smaller number, not an error. Weighting cannot rescue DISTINCT: a dropped row takes its

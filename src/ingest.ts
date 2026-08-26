@@ -74,6 +74,45 @@ export function uaKind(
   return BOT_UA.test(userAgent) ? "bot" : "browser";
 }
 
+/**
+ * Строки, которые выглядят как идентификатор, но им не являются.
+ *
+ * Повод конкретный: ручная проверка ingest прислала `00000000-0000-4000-8000-000000000000` —
+ * по форме безупречный UUID v4, и он занял в хранилище место настоящей установки. Ущерб не
+ * в одной строке, а в том, ЧТО по этому полю считается: `src/retention.ts` берёт число
+ * установок как `DISTINCT anon`, поэтому одна заглушка, разосланная с сотни устройств,
+ * схлопывает их в одного очень лояльного пользователя. Метрика не сломается заметно, она
+ * соврёт правдоподобно.
+ *
+ * Ловить это должен край, а не дисциплина: следующий человек, проверяющий приём руками,
+ * возьмёт ровно ту же строку из нулей — она первая приходит в голову.
+ */
+const PLACEHOLDER_ANON = new Set(["null", "undefined", "unknown", "none", "nil", "n/a", "-"]);
+
+/** Нулевой UUID в любой форме, включая «нулевой v4», где ненулевые только версия и вариант. */
+function isBlankUuid(value: string): boolean {
+  const hex = value.replace(/-/g, "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(hex)) return false;
+  // Позиции 12 и 16 — версия и вариант; у заглушки они выставлены именно чтобы пройти проверку
+  // формы, поэтому смотреть на них бессмысленно. Всё остальное нулевое — значит идентификатора нет.
+  return /^0+$/.test(hex.slice(0, 12) + hex.slice(13, 16) + hex.slice(17));
+}
+
+/**
+ * Присланный идентификатор, если он вообще что-то идентифицирует.
+ *
+ * Событие при этом НЕ отвергается: «сколько было» ценно и без «кто», а отказ из-за плохого
+ * поля потерял бы и то и другое. Заглушка приравнивается к её отсутствию — дальше работает
+ * обычный откат к выведенному на краю.
+ */
+export function usableAnon(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "") return undefined;
+  if (PLACEHOLDER_ANON.has(trimmed.toLowerCase())) return undefined;
+  return isBlankUuid(trimmed) ? undefined : trimmed;
+}
+
 /** Client time when it is plausible, server time when it is not. */
 export function stampTime(clientTs: number | undefined, now: number): number {
   if (clientTs === undefined) return now;
@@ -107,6 +146,8 @@ function enrich(
   props_json: string | undefined,
   metrics_json: string | undefined,
 ): EnrichedEvent {
+  // Заглушку отбрасываем ДО выбора, чтобы «прислал мусор» вело себя ровно как «не прислал».
+  const claimed = usableAnon(event.anon);
   return {
     source: event.source,
     platform: event.platform,
@@ -124,11 +165,12 @@ function enrich(
     // A browser cannot choose its own identity: for web the edge-derived id wins outright,
     // because anything else would let a page claim to be a thousand different people. Apps
     // have no IP stability to derive from and send an install-scoped UUID instead.
-    anon: event.platform === "web" ? (edge.anon ?? event.anon) : (event.anon ?? edge.anon),
+    anon: event.platform === "web" ? (edge.anon ?? claimed) : (claimed ?? edge.anon),
     ua_kind: uaKind(event.platform, edge.userAgent, event.auto),
     ts: stampTime(event.ts, edge.now),
     props_json,
     metrics_json,
+    metrics: event.metrics,
   };
 }
 

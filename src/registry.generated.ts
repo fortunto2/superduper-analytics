@@ -71,3 +71,14 @@ export const APPS = [
   { id: "superfinans", platform: "ios", storeId: "6759007613", site: null },
   { id: "swift-terminal", platform: "ios", storeId: "6758515520", site: null },
 ] as const;
+
+/**
+ * Числовые размерности со своим double-слотом, В ПОРЯДКЕ ПОЗИЦИЙ: первая — double2, и так далее.
+ * Массив только дополняется; `check` сравнивает его с реестром и падает на перестановке.
+ */
+export const METRICS: readonly string[] = [
+  "days_since_first",
+  "items_total",
+  "content_seconds",
+  "render_seconds",
+];

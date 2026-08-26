@@ -79,14 +79,28 @@ function gen(): void {
   );
 }
 
+/**
+ * Имена метрик из текста сгенерированного файла, по порядку.
+ *
+ * Регуляркой по исходнику, а не импортом модуля: `check` обязан работать на клоне, где файла
+ * ещё нет, и не тянуть за собой пайплайн — по той же причине, что и ленивый импорт `ingest`
+ * ниже. Файл машинный, его форма известна точно.
+ */
+function committedMetrics(generated: string): readonly string[] | undefined {
+  const block = /export const METRICS: readonly string\[\] = \[([\s\S]*?)\];/.exec(generated);
+  if (block === null) return undefined;
+  return [...(block[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? "");
+}
+
 function check(): void {
   const registryPath = flag("registry", DEFAULT_REGISTRY);
   const outPath = flag("out", DEFAULT_GENERATED);
   const registry = readRegistry(registryPath);
-  const problems = checkRegistry(registry);
-
   const expected = renderGenerated(registry);
   const actual = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";
+  // Позиции метрик читаются из УЖЕ СГЕНЕРИРОВАННОГО файла, а не из свежего рендера: сравнивать
+  // реестр с самим собой бессмысленно, а зафиксированный файл — это то, что уехало в хранилище.
+  const problems = checkRegistry(registry, committedMetrics(actual));
   if (actual !== expected) problems.push(`${outPath} is stale — run \`make gen\``);
 
   if (problems.length > 0) {
@@ -94,7 +108,7 @@ function check(): void {
   }
   console.log(
     `${registryPath} ok — ${registry.sites.length} sites, ${registry.apps.length} apps, ` +
-      `${sourceIdsOf(registry).length} sources`,
+      `${sourceIdsOf(registry).length} sources, ${registry.metrics.length} metric slots`,
   );
 }
 

@@ -28,6 +28,8 @@
 import { SITES, SOURCE_IDS } from "./registry.generated";
 import { fetchOverview, type OverviewEnv } from "./overview";
 import { fetchRetention } from "./retention";
+import { METRIC_SLOTS } from "./registry";
+import { fetchMetric } from "./stats";
 import { fetchConversion } from "./conversion";
 import { RETENTION_DAYS } from "./schema";
 
@@ -117,6 +119,29 @@ const TOOLS = [
       "person asked a question right now, an AI Crawler is building an index. These never " +
       "appear in `traffic` — agents do not run JavaScript, so the counter never sees them.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "metric",
+    title: "Aggregate one number the apps report",
+    description:
+      "Average, range and total for one metric, split by product and event. Only metrics with " +
+      "a slot in registry/sources.yaml can be aggregated — everything else an app sends is " +
+      "stored as JSON and readable per row, but not summable: the store's SQL has no JSON " +
+      "functions. Currently available: " +
+      (METRIC_SLOTS.length > 0 ? METRIC_SLOTS.join(", ") : "none yet") +
+      ". Rows where the key was absent are excluded, so a zero means a real zero. Always read " +
+      "the event column: the same metric means different things on different events.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: `Metric name. One of: ${METRIC_SLOTS.join(", ") || "(none registered yet)"}`,
+        },
+        days: DAYS_PROPERTY,
+      },
+      required: ["name"],
+    },
   },
   {
     name: "retention",
@@ -295,6 +320,29 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
 
       // Эти два спрашивают хранилище одним запросом каждый. Обзор стоит семи, а чтения
       // метрятся — поэтому они стоят ДО него и никогда его не зовут.
+      if (name === "metric") {
+        const metric = typeof args.name === "string" ? args.name : "";
+        const result = await fetchMetric(env, metric, days);
+        if (!result.ok) {
+          return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
+        }
+        const { rows, slot } = result.metric;
+        const lines = rows.map(
+          r =>
+            `- ${r.source} · ${r.event} — avg ${r.avg.toFixed(1)}, range ${r.min}..${r.max}, ` +
+            `total ${r.total}, over ${r.events} event(s)`,
+        );
+        const text = [
+          `"${metric}" over the last ${days} day(s), from double${slot}.`,
+          "",
+          ...(lines.length > 0 ? lines : [`No event carried "${metric}" in this window.`]),
+          "",
+          "Averages are weighted by the sampling interval; an unweighted one would be quietly " +
+            "biased. Events that never send this key are excluded rather than counted as zero.",
+        ];
+        return toolText(id, text.join("\n"), version);
+      }
+
       if (name === "retention") {
         const result = await fetchRetention(env, days, now);
         if (!result.ok) {

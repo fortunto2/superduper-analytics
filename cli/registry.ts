@@ -8,7 +8,14 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { z } from "zod/v4";
-import { Platform, SourceId } from "../src/schema";
+import { MAX_DOUBLES, MetricName, Platform, SourceId } from "../src/schema";
+
+/**
+ * Сколько числовых размерностей помещается: все double-слоты минус один под собственное время
+ * события. Упереться в потолок — это не «добавьте ещё», а «пересмотрите список»: слот стоит
+ * дорого и берётся навсегда.
+ */
+export const MAX_METRICS = MAX_DOUBLES - 1;
 
 /**
  * `public` opts a source into the open-startup page at /open. It defaults to FALSE: a source
@@ -72,6 +79,12 @@ const App = z.object({
 export const RegistryFile = z.object({
   sites: z.array(Site).min(1),
   apps: z.array(App),
+  /**
+   * Имена метрик, получающих свой double-слот. Позиция — это порядок в массиве, поэтому
+   * список только дополняется: перестановка задним числом переименовывает историю.
+   * Пустой по умолчанию, чтобы реестр без этой секции оставался валидным.
+   */
+  metrics: z.array(MetricName).max(MAX_METRICS).default([]),
 });
 
 export type RegistryFile = z.infer<typeof RegistryFile>;
@@ -103,8 +116,40 @@ export function sourceIdsOf(registry: RegistryFile): string[] {
  * Problems that zod cannot express, because they are about the file as a whole.
  * Returns human-readable lines; empty means the registry is sound.
  */
-export function checkRegistry(registry: RegistryFile): string[] {
+export function checkRegistry(
+  registry: RegistryFile,
+  /**
+   * Список метрик, уже лежащий в сгенерированном файле, то есть уже уехавший в хранилище.
+   * Нужен, чтобы поймать перестановку: сам по себе YAML выглядит одинаково законно и до, и
+   * после того, как две строки поменяли местами, а данные за три месяца после этого молча
+   * начинают значить другое. Без аргумента проверка порядка просто не выполняется — так
+   * `check` работает и на чистом клоне, где генерировать ещё нечего.
+   */
+  committedMetrics?: readonly string[],
+): string[] {
   const problems: string[] = [];
+
+  const seenMetrics = new Set<string>();
+  for (const metric of registry.metrics) {
+    if (seenMetrics.has(metric)) problems.push(`metrics: duplicate "${metric}"`);
+    seenMetrics.add(metric);
+  }
+
+  if (committedMetrics !== undefined) {
+    // Уже записанные позиции неприкосновенны: новые имена только в хвост.
+    for (const [at, name] of committedMetrics.entries()) {
+      const now = registry.metrics[at];
+      if (now === name) continue;
+      problems.push(
+        now === undefined
+          ? `metrics: "${name}" removed from position ${at + 1} — double${at + 2} still holds its ` +
+            `values in the store, and the name is what makes them readable`
+          : `metrics: position ${at + 1} changed from "${name}" to "${now}" — double${at + 2} ` +
+            `already holds "${name}" values, and renaming a slot rewrites history silently. ` +
+            `Append instead.`,
+      );
+    }
+  }
 
   const seenSites = new Set<string>();
   for (const site of registry.sites) {
@@ -190,6 +235,7 @@ export function renderGenerated(registry: RegistryFile): string {
         `storeId: ${JSON.stringify(a.storeId)}, site: ${a.site === null ? "null" : JSON.stringify(a.site)} },`,
     )
     .join("\n");
+  const metrics = registry.metrics.map((m) => `  ${JSON.stringify(m)},`).join("\n");
   const sites = sitesOf(registry)
     .map(
       (s) =>
@@ -220,5 +266,13 @@ ${sites}
 export const APPS = [
 ${apps}
 ] as const;
+
+/**
+ * Числовые размерности со своим double-слотом, В ПОРЯДКЕ ПОЗИЦИЙ: первая — double2, и так далее.
+ * Массив только дополняется; \`check\` сравнивает его с реестром и падает на перестановке.
+ */
+export const METRICS: readonly string[] = [
+${metrics}
+];
 `;
 }

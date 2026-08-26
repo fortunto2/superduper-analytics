@@ -7,6 +7,7 @@
  * Every judgement — validation, stripping, budgets — happened in ingest.ts, so a bug here can
  * only be a mapping bug, and the mapping is checked by the compiler.
  */
+import { metricDoubles } from "../registry";
 import { BLOB_SLOTS, DOUBLE_SLOTS, INDEX_FIELD, type EnrichedEvent } from "../schema";
 
 /**
@@ -17,7 +18,12 @@ import { BLOB_SLOTS, DOUBLE_SLOTS, INDEX_FIELD, type EnrichedEvent } from "../sc
 export function toDataPoint(event: EnrichedEvent): AnalyticsEngineDataPoint {
   return {
     blobs: BLOB_SLOTS.map((slot) => event[slot] ?? null),
-    doubles: DOUBLE_SLOTS.map((slot) => event[slot]),
+    // Фиксированные слоты, затем метрики из реестра — тем же порядком, что в `metrics:` YAML.
+    // Хвост можно было бы обрезать по последней ненулевой метрике, и Analytics Engine принял бы:
+    // недостающие позиции он и так читает нулями. Не обрезаем — длина массива тогда зависела бы
+    // от содержимого события, и строка, где метрику не прислали, отличалась бы по форме от той,
+    // где прислали. Одинаковая форма стоит нескольких нулей.
+    doubles: [...DOUBLE_SLOTS.map((slot) => event[slot]), ...metricDoubles(event.metrics)],
     // Exactly one index is allowed, and it is the sampling key: Analytics Engine samples per
     // index value, so `source` keeps one noisy site from thinning out a quiet one.
     indexes: [event[INDEX_FIELD]],

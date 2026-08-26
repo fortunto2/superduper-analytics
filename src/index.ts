@@ -21,7 +21,7 @@ import { buildOpenReport, OPEN_CACHE_SECONDS, OPEN_PAGE, OPEN_PAGE_CACHE_SECONDS
 import { handleMcp } from "./mcp";
 import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
-import { fetchStats } from "./stats";
+import { fetchMetric, fetchStats } from "./stats";
 import { fetchRetention } from "./retention";
 import { fetchConversion } from "./conversion";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
@@ -336,6 +336,32 @@ app.get("/v1/overview", async (c) => {
   if (!result.ok) return c.json(result.body, result.status as 400 | 500 | 502);
 
   const response = c.json(result.overview);
+  response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
+});
+
+/**
+ * Одна числовая размерность из реестра, посчитанная по продуктам и событиям.
+ *
+ * Отдельно от /v1/stats по той же причине, что ретеншен: обзор рисуется постоянно, а этот
+ * вопрос задают адресно. Имя метрики обязано быть из `registry/sources.yaml` — иначе 400 со
+ * списком доступных, а не пустой ответ, который читался бы как «данных нет».
+ */
+app.get("/v1/metric", async (c) => {
+  const name = c.req.query("name");
+  if (name === undefined || name === "") {
+    return c.json({ error: "name_required", message: "pass ?name=<metric from registry/sources.yaml>" }, 400);
+  }
+  const cache = caches.default;
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
+  if (cached !== undefined) return cached;
+
+  const result = await fetchMetric(c.env, name, Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS));
+  if (!result.ok) return c.json(result.body, result.status);
+
+  const response = c.json(result.metric);
   response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
   c.executionCtx.waitUntil(cache.put(key, response.clone()));
   return response;

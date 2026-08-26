@@ -27,6 +27,16 @@ export const EventName = z
   .max(64)
   .regex(/^[a-z][a-z0-9_]*$/, "snake_case, e.g. page_viewed");
 
+/**
+ * Имя числовой размерности. Тот же алфавит, что у имён событий: это ключ, который попадает в
+ * `GROUP BY` и в имя колонки, и пробел или дефис в нём отравляет и то и другое.
+ */
+export const MetricName = z
+  .string()
+  .min(2)
+  .max(40)
+  .regex(/^[a-z][a-z0-9_]*$/, "snake_case, e.g. days_since_first");
+
 export const Event = z.object({
   /** Which site or app. Must exist in registry/sources.yaml — ingest rejects unknown ids. */
   source: SourceId,
@@ -168,10 +178,16 @@ export const BLOB_SLOTS = [
 /**
  * Doubles are positional exactly like blobs, with the same append-only rule.
  *
- * Only `ts` has earned a position. Analytics Engine stamps its own `timestamp` at write time,
- * which is when the batch arrived — useless for a phone that buffered for two days, so the
- * event's own time has to be carried. Every further double must earn its slot with a query
- * that needs it; guessing here is as expensive as guessing at blobs.
+ * Only `ts` is fixed here. Analytics Engine stamps its own `timestamp` at write time, which is
+ * when the batch arrived — useless for a phone that buffered for two days, so the event's own
+ * time has to be carried.
+ *
+ * Everything after it is the registry's `metrics:` list — see METRIC_SLOTS in `registry.ts`,
+ * which is where it lives because a generated file may not be imported from here: `gen` reads
+ * this module to validate the very file it is about to write. That split is
+ * the point: a new number worth aggregating is one line of YAML and `make gen`, not an edit to
+ * this file and a deploy. The discipline does not loosen, it just moves: the list is
+ * append-only too, and `make check` refuses a reordering.
  */
 export const DOUBLE_SLOTS = ["ts"] as const;
 
@@ -215,6 +231,16 @@ export type EnrichedEvent = {
    *  reported to the client instead of silently dropping a row later. */
   props_json?: string;
   metrics_json?: string;
+
+  /**
+   * Те же метрики необработанным объектом — для позиционных double-слотов.
+   *
+   * Не дублирование `metrics_json`, а два разных назначения: JSON хранит ВСЁ, что прислали, и
+   * читается построчно; слоты берут только имена из реестра и делают их считаемыми. Разбирать
+   * JSON обратно в синке было бы дешевле по строчкам и дороже по смыслу: синк обязан оставаться
+   * тупым позиционером, иначе он станет вторым местом, где что-то решают про содержимое события.
+   */
+  metrics?: Record<string, number>;
 
   /**
    * The campaign that produced the visit. Own slots rather than a JSON blob because every

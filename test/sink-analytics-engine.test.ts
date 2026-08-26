@@ -7,6 +7,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 import { ingest } from "../src/ingest";
 import { toDataPoint, writeEvents } from "../src/sinks/analytics-engine";
+import { METRIC_SLOTS } from "../src/registry";
 import {
   BLOB_SLOTS,
   DOUBLE_SLOTS,
@@ -57,8 +58,12 @@ describe("positions", () => {
     ]);
   });
 
-  it("puts the event time in double1", () => {
-    expect(toDataPoint(full).doubles).toEqual([1781524800000]);
+  it("puts the event time in double1, before the registry's metric slots", () => {
+    const doubles = toDataPoint(full).doubles;
+    expect(doubles?.[0]).toBe(1781524800000);
+    // Хвост — метрики из реестра, нулями: у этого события их нет. Длина не зависит от
+    // содержимого события намеренно — см. комментарий в синке.
+    expect(doubles).toHaveLength(DOUBLE_SLOTS.length + METRIC_SLOTS.length);
   });
 
   it("indexes by source, and by exactly one thing", () => {
