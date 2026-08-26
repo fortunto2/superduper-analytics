@@ -28,6 +28,7 @@
 import { SITES, SOURCE_IDS } from "./registry.generated";
 import { fetchOverview, type OverviewEnv } from "./overview";
 import { fetchRetention } from "./retention";
+import { fetchNetwork } from "./network";
 import { METRIC_SLOTS } from "./registry";
 import { fetchMetric } from "./stats";
 import { fetchConversion } from "./conversion";
@@ -119,6 +120,19 @@ const TOOLS = [
       "person asked a question right now, an AI Crawler is building an index. These never " +
       "appear in `traffic` — agents do not run JavaScript, so the counter never sees them.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "network",
+    title: "Which of our own products feed each other",
+    description:
+      "Traffic between our own sites, plus clicks on install buttons. Answers 'does the network " +
+      "feed itself' — whether a reader of one product ever reaches another, which no per-product " +
+      "number can show. Site-to-site edges come from the browser's own Referer, so they are " +
+      "facts about clicks that happened. Store clicks are INTENT, not installs: whether the app " +
+      "was installed is Apple's number, matched by the campaign token. App-to-app is absent and " +
+      "will stay absent — an app has no referrer, and linking one launch to another click would " +
+      "need the cross-product identifier this project refuses to have.",
+    inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
   },
   {
     name: "metric",
@@ -320,6 +334,32 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
 
       // Эти два спрашивают хранилище одним запросом каждый. Обзор стоит семи, а чтения
       // метрятся — поэтому они стоят ДО него и никогда его не зовут.
+      if (name === "network") {
+        const result = await fetchNetwork(env, days);
+        if (!result.ok) {
+          return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
+        }
+        const { edges, store_clicks, known_hosts } = result.network;
+        const text = [
+          `Last ${days} day(s). ${known_hosts} of our hostnames are recognised as our own.`,
+          "",
+          "Between our sites:",
+          ...(edges.length > 0
+            ? edges.map(e => `- ${e.from} → ${e.to} — ${e.views} view(s)`)
+            : ["- nothing: no visitor arrived at one of our sites from another."]),
+          "",
+          "Clicks on install buttons (intent, not installs):",
+          ...(store_clicks.length > 0
+            ? store_clicks.map(c => `- ${c.source} → ${c.store}${c.placement === "" ? "" : ` (${c.placement})`} — ${c.clicks}`)
+            : ["- none in this window."]),
+          "",
+          "Site-to-site is the browser's own Referer, so it is a click that happened. A store " +
+            "click is intent: the install itself is Apple's number, tied to the same campaign " +
+            "token. Never add the two — they are counted by different parties.",
+        ];
+        return toolText(id, text.join("\n"), version);
+      }
+
       if (name === "metric") {
         const metric = typeof args.name === "string" ? args.name : "";
         const result = await fetchMetric(env, metric, days);

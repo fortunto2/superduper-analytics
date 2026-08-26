@@ -78,6 +78,7 @@ describe("tools", () => {
       "goals",
       "list_products",
       "metric",
+      "network",
       "retention",
       "search",
       "traffic",

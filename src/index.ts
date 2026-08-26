@@ -22,6 +22,7 @@ import { handleMcp } from "./mcp";
 import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchMetric, fetchStats } from "./stats";
+import { fetchNetwork } from "./network";
 import { fetchRetention } from "./retention";
 import { fetchConversion } from "./conversion";
 import { SNIPPET, SNIPPET_CACHE_SECONDS, SNIPPET_VERSION } from "./snippet";
@@ -336,6 +337,25 @@ app.get("/v1/overview", async (c) => {
   if (!result.ok) return c.json(result.body, result.status as 400 | 500 | 502);
 
   const response = c.json(result.overview);
+  response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
+  c.executionCtx.waitUntil(cache.put(key, response.clone()));
+  return response;
+});
+
+/**
+ * Переходы между нашими продуктами. Отдельный маршрут по той же причине, что ретеншен: два
+ * запроса по требованию вместо постоянной платы на каждом рендере обзора.
+ */
+app.get("/v1/network", async (c) => {
+  const cache = caches.default;
+  const key = cacheKey(c);
+  const cached = await cache.match(key);
+  if (cached !== undefined) return cached;
+
+  const result = await fetchNetwork(c.env, Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS));
+  if (!result.ok) return c.json(result.body, result.status);
+
+  const response = c.json(result.network);
   response.headers.set("cache-control", `private, max-age=${STATS_CACHE_SECONDS}`);
   c.executionCtx.waitUntil(cache.put(key, response.clone()));
   return response;
