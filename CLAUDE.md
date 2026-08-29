@@ -6,13 +6,20 @@ One ingest for every site and app I run, on Cloudflare, with the history in an o
 and why.** Module boundaries: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **State: live at `https://analytics.superduperai.co`.** Ingest, the Analytics Engine sink, the
-read API, the web counter (`/sda.js`) and the dashboard (`/`) all work in production. Left:
-the Swift snippet, then v2's Iceberg archive.
+read API, the web counter (`/sda.js`) and the dashboard (`/`) work in production. Мобильные
+приложения тоже шлют — через SPM-пакет `SuperDuperAnalytics`, а не через задуманный когда-то
+Swift-снипет: у life2film, facealarm и carettafriends идут события, возвраты и воронки.
+Осталось из v1 — ничего; следующее большое это архив Iceberg (v2).
 
-The counter is on **8 of the 14 sites**; `akbuzat.net` alone takes 5.5k edge hits a week and
-records nothing. Closing that is the top of `docs/roadmap.md` and it is one line per site —
-any new metric on an uncovered site is multiplied by zero. `docs/install.md` is the one-liner. Ingest has **no
-authentication**; the dashboard and `/v1/*` are behind `DASHBOARD_KEY` — see ARCHITECTURE.md.
+Счётчик стоит на **11 из 16 живых сайтов** (плюс один retired). `akbuzat.net` по-прежнему без
+него. Любая новая метрика на непокрытом сайте умножается на ноль, поэтому покрытие идёт первым
+в `docs/roadmap.md`; `docs/install.md` — инструкция на одну строку. Ingest **без
+аутентификации**; дашборд и `/v1/*` за `DASHBOARD_KEY` — см. ARCHITECTURE.md.
+
+**Чтобы читать эти данные, есть скил — `analytics-dig`** (`~/.claude/skills/analytics-dig/`).
+Там собрано, откуда что брать и как не соврать: почему `count()` всегда врёт, почему разрыв в
+проценты — шум, а в разы — вывод, почему наши события не деньги, и в каком порядке вообще
+разбирать. Каждое правило там оплачено ошибкой, в основном моей.
 
 That host is effectively permanent: it goes into every site, every app and every privacy page.
 Changing it later means editing all of them.
@@ -42,8 +49,10 @@ src/anon.ts          the per-day edge-derived id. Nothing is stored on the devic
 src/snippet.ts       the web counter, served at /sda.js. A string, not a build artefact
 src/sinks/           where events land. Dumb by design: positions, nothing else
 src/stats.ts         reads the hot store over the SQL API. Never writes; сюда же /v1/metric
-src/retention.ts     возвраты в приложениях — «есть ли спрос». Веб сюда не попадает никогда
+src/retention.ts     возвраты в приложениях, D1/D3/D7. Веб сюда не попадает никогда
 src/conversion.ts    цель ÷ просмотры той же страницы — «что улучшать»
+src/network.ts       переходы между нашими продуктами: кто кого кормит
+src/stores/analytics-reports.ts  установки, УДАЛЕНИЯ и сессии от Apple. Асинхронный API в четыре шага
 src/stores/          what Apple and Google report: exact daily totals, in D1, not in AE
 src/search/          Search Console: impressions, queries, position. The leading indicator
 src/ga/              GA4 page views — the other counter on the same pages, never summed
@@ -107,7 +116,12 @@ first has drifted.
    возвратами и занижено сэмплированием, обе ошибки неизвестного размера. Настоящий вопрос
    «вернулись ли» отвечает `src/retention.ts` — и только для приложений, где идентификатор
    переживает сутки. Складывать `people_days` с установками из `store_daily` нельзя вдвойне.
-7. **Two counters, one table, никогда не в сумме.** `page_daily.provider` — часть первичного
+7. **Доставка негарантированная, и воронка от этого не вложена.** Буфер живёт секунды и умирает
+   вместе с процессом, сетевой сбой проглатывается молча — беакон не стоит ошибки и повтора.
+   Измерено на life2film: теряется около 3%, у трёх установок из тридцати восьми следующий шаг
+   БОЛЬШЕ предыдущего. Значит разрыв в разы это вывод, а разрыв в проценты — шум, и «на единицу
+   больше» не баг клиента, а недоехавшее событие. Подробности и правила чтения — в metrics.md.
+8. **Two counters, one table, никогда не в сумме.** `page_daily.provider` — часть первичного
    ключа: за один день у одной страницы лежат `own` и `ga4`, и оба числа верные. GA режут
    блокировщики, у нас сэмплирование и свой фильтр ботов; расхождение в единицы означает, что
    нашему счётчику можно верить, расхождение вдвое — что один из них чего-то не видит. Джоб
@@ -122,8 +136,15 @@ first has drifted.
 - **Do** write to sinks via `ctx.waitUntil` — a beacon must never make a page wait.
 - **Don't** add cookies or cross-site identifiers. Every privacy page on every property says
   there are none, and a banner becomes mandatory the day one appears.
-- **Don't** grow this into a worse PostHog. No funnels, cohorts or session replay — if those
-  are truly needed, point PostHog at the same stream.
+- **Don't** grow this into a worse PostHog. Граница не в словах «воронка» и «когорта» — они
+  как раз появились и работают: `/v1/conversion` считает цель к просмотрам страницы,
+  `/v1/retention` даёт D1/D3/D7 по когортам установок. Ни то, ни другое не потребовало нового
+  идентификатора: конверсия считается НА странице, а не по пути между страницами, а когорты
+  живут на install-scoped UUID, который и так есть у приложения.
+  Запрещено то, что требует сшивать шаги одного человека: сессии, повтор экрана, сквозной id
+  между продуктами. Отсюда и практическое следствие — у событий нет общего идентификатора
+  запуска, поэтому «этот рендер относится к тому превью» недоказуемо, доступно только
+  сопоставление количеств. Нужен настоящий session replay — ставьте PostHog на тот же поток.
 - **Don't** commit secrets. The repo is public; the registry holds public identifiers only.
 
 ## Quality gate
