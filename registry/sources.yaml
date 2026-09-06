@@ -63,6 +63,14 @@ sites:
     name: Air Signal
     url: https://airsignal.app
     public: true
+  # Agent-facing, so the numbers mean something different from every other row here:
+  # a "visit" is usually an agent fetching /skill.md, not a person reading a page.
+  # Counted server-side from the Worker — there is no script on the landing and no
+  # storage in the visitor's browser, which is what lets the page keep saying so.
+  - id: agentboard
+    url: https://board.rustman.org
+    public: true
+
   - id: rustman
     url: https://rustman.org
   - id: akbuzat

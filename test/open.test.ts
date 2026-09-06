@@ -21,6 +21,7 @@ describe("what may be published", () => {
    */
   it("publishes exactly the sites the registry marks, and no others", () => {
     expect(SITES.filter((s) => s.open).map((s) => s.id).sort()).toEqual([
+      "agentboard",
       "airsignal",
       "life2film",
       "live2play",
@@ -59,7 +60,7 @@ describe("the public routes", () => {
     expect(new Set(ids).size).toBe(ids.length);
     // Only those flagged `public: true` may ever appear here.
     for (const id of ids)
-      expect(["superduperai", "live2play", "life2film", "visaphoto", "airsignal"]).toContain(id);
+      expect(["superduperai", "live2play", "life2film", "visaphoto", "airsignal", "agentboard"]).toContain(id);
   });
 
   it("marks people as a floor whenever the window was sampled", async () => {
