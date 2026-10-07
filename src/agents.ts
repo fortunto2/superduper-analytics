@@ -101,12 +101,30 @@ type Group = { count?: number; dimensions?: Record<string, string> };
  * One zone per call — the dataset takes a single zoneTag, unlike the daily one. Callers should
  * ask only for zones they will show, since each is a subrequest.
  */
+/**
+ * Why a failure is a value here rather than an `undefined`.
+ *
+ * Every path out of this function used to be `return undefined`: no token, a refused request,
+ * a GraphQL error, an empty node. The caller then filtered undefined away and the MCP tool
+ * printed "No verified AI agent traffic in the last 24 hours" — a sentence about the agents
+ * that was really a sentence about the query. Measured on 6 Sep 2026: Cloudflare held 198
+ * AI Crawler, 7 AI Assistant and 4 AI Search requests for visayes.app on that very window,
+ * and the tool reported none. The reason has to survive the return.
+ */
+export type AgentFailure = { zone: string; unavailable: string };
+export type AgentResult = AgentTraffic | AgentFailure;
+
+export function isAgentFailure(result: AgentResult): result is AgentFailure {
+  return "unavailable" in result;
+}
+
 export async function fetchAgentTraffic(
   env: ZonesEnv,
   zone: Zone,
   now: number,
-): Promise<AgentTraffic | undefined> {
-  if (env.CF_API_TOKEN === undefined) return undefined;
+): Promise<AgentResult> {
+  const failed = (unavailable: string): AgentFailure => ({ zone: zone.name, unavailable });
+  if (env.CF_API_TOKEN === undefined) return failed("CF_API_TOKEN is not set on this Worker");
 
   const response = await fetch(GRAPHQL, {
     method: "POST",
@@ -121,16 +139,19 @@ export async function fetchAgentTraffic(
       },
     }),
   });
-  if (!response.ok) return undefined;
+  if (!response.ok) return failed(`Cloudflare answered HTTP ${response.status}`);
 
   const reply = (await response.json()) as {
     errors?: unknown[];
     data?: { viewer?: { zones?: { byCategory?: Group[]; agents?: Group[]; aiPaths?: Group[]; byHost?: Group[] }[] } };
   };
-  if (Array.isArray(reply.errors) && reply.errors.length > 0) return undefined;
+  if (Array.isArray(reply.errors) && reply.errors.length > 0) {
+    const first = reply.errors[0] as { message?: string };
+    return failed(first?.message ?? "GraphQL error without a message");
+  }
 
   const node = reply.data?.viewer?.zones?.[0];
-  if (node === undefined) return undefined;
+  if (node === undefined) return failed("the zone returned no node — check the token's zone scope");
 
   const categories = (node.byCategory ?? [])
     // An empty category is "Cloudflare did not verify this", i.e. the ordinary web plus every

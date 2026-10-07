@@ -6,7 +6,7 @@
  * events tells "this site has no visitors" apart from "this site has no counter" — which is
  * the only honest way to know whether the rollout is finished.
  */
-import { fetchAgentTraffic, type AgentTraffic } from "./agents";
+import { fetchAgentTraffic, isAgentFailure, type AgentFailure, type AgentTraffic } from "./agents";
 import { APPS, SITES } from "./registry.generated";
 import { readPageHistory, type PageHistoryRow } from "./rollup";
 import { LAG_DAYS, readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
@@ -16,7 +16,7 @@ import { dayBefore, utcDay } from "./stores/schema";
 /** Сайты, на которые счётчик в принципе можно поставить. */
 const LIVE_SITES = SITES.filter((s) => !s.retired);
 import { fetchStats, type Stats, type StatsEnv } from "./stats";
-import { fetchZoneTotals, listZones, zoneForHost, type ZonesEnv } from "./zones";
+import { fetchZoneTotals, listZones, zoneAccessProblem, zoneForHost, type ZonesEnv } from "./zones";
 
 export type Coverage = {
   zone: string;
@@ -50,6 +50,7 @@ export type Overview = {
    * бесплатного тарифа у этого датасета.
    */
   agents?: AgentTraffic[];
+  agent_failures?: AgentFailure[];
   /** Registered sites, and how many actually reported. Counted per SITE, never per zone —
    *  six properties share the superduperai.co zone, so a zone count would claim six installs
    *  where there is one. */
@@ -110,15 +111,40 @@ export async function fetchOverview(
     // Все зоны, а не самая нагруженная. Раньше страница называлась общей, а показывала агентов
     // одного домена — и получалось, что у остальных их будто нет. Каждая зона это один
     // субзапрос; они идут разом, поэтому стоит это столько же, сколько стоила одна.
-    const agents = (
-      await Promise.all(
-        registered.map((zone) =>
-          fetchAgentTraffic(env, zone, now).catch(() => undefined),
-        ),
-      )
-    ).filter((a): a is AgentTraffic => a !== undefined && a.agents.length > 0);
+    // No zones is not "no agents": Promise.all over an empty list resolves to an empty list
+    // with no error anywhere, which is exactly how a missing token came out looking like a
+    // quiet week. Say what happened instead.
+    if (registered.length === 0) {
+      // Which of the three steps emptied out is the whole diagnosis, so the message names the
+      // counts rather than guessing: zones listed, zones with daily totals, zones matched.
+      const detail =
+        zones.length === 0
+          ? await zoneAccessProblem(env)
+          : totals.length === 0
+            ? `${zones.length} zone(s) listed, but the daily analytics query returned none — ` +
+              (await zoneAccessProblem(env))
+            : `${totals.length} zone(s) have data, but none matched a registered site's host`;
+      return { zones, totals: registered, agents: [], agentFailures: [{ zone: "(no zones)", unavailable: detail }] };
+    }
 
-    return { zones, totals: registered, agents };
+    const results = await Promise.all(
+      registered.map((zone) =>
+        fetchAgentTraffic(env, zone, now).catch(
+          (err: unknown): AgentFailure => ({
+            zone: zone.name,
+            unavailable: err instanceof Error ? err.message : String(err),
+          }),
+        ),
+      ),
+    );
+    // Two lists, because "no agents came" and "the question could not be asked" are different
+    // answers and only one of them is good news.
+    const agents = results.filter(
+      (a): a is AgentTraffic => !isAgentFailure(a) && a.agents.length > 0,
+    );
+    const agentFailures = results.filter(isAgentFailure);
+
+    return { zones, totals: registered, agents, agentFailures };
   })();
 
   // Окно поиска сдвинуто: консоль отдаёт данные с отставанием в два-три дня, и запрос за
@@ -178,6 +204,7 @@ export async function fetchOverview(
 
   const edgeAvailable = edgeResult !== null && edgeResult.totals.length > 0;
   const agents = edgeResult?.agents ?? [];
+  const agentFailures = edgeResult?.agentFailures ?? [];
   const coverage: Coverage[] =
     edgeResult === null
       ? []
@@ -259,6 +286,7 @@ export async function fetchOverview(
       stats: stats.stats,
       coverage,
       agents,
+      agent_failures: agentFailures,
       edge_available: edgeAvailable,
       // Выключенные сайты не считаются: цель, которой нельзя достичь, делает всю дробь
       // бессмысленной — «9 из 14» звучит как недоделанная работа, хотя четырнадцатый

@@ -31,7 +31,7 @@
 import { SITES } from "./registry.generated";
 import { CHART_CSS, CHART_JS } from "./chart";
 import { fetchStats, type StatsEnv } from "./stats";
-import { fetchAgentTraffic, type AgentTraffic } from "./agents";
+import { fetchAgentTraffic, isAgentFailure, type AgentTraffic } from "./agents";
 import { listZones, zoneForHost, type ZonesEnv } from "./zones";
 
 /** How long the numbers may be stale. Nobody refreshes a public metrics page for a live figure. */
@@ -156,7 +156,7 @@ export async function buildOpenReport(
     );
     const perZone = (
       await Promise.all(ours.map((zone) => fetchAgentTraffic(env, zone, now).catch(() => undefined)))
-    ).filter((z): z is AgentTraffic => z !== undefined);
+    ).filter((z): z is AgentTraffic => z !== undefined && !isAgentFailure(z));
 
     const byAgent = new Map<string, { agent: string; operator: string; requests: number }>();
     let requests = 0;

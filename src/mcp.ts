@@ -463,7 +463,7 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
       if (!result.ok) {
         return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
       }
-      const { stats, coverage, agents, sites_reporting, sites_total } = result.overview;
+      const { stats, coverage, agents, agent_failures, sites_reporting, sites_total } = result.overview;
 
       if (name === "traffic") {
         const rows = stats.sources.map(
@@ -629,7 +629,27 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
 
       if (name === "agent_traffic") {
         if (agents === undefined || agents.length === 0) {
-          return toolText(id, "No verified AI agent traffic in the last 24 hours.", version);
+          // An empty answer has two causes and only one of them is "nobody came". If any zone
+          // could not be read, say so and name it: reporting a failed read as an absence of
+          // agents is the same false green as a linter that passes because it never ran.
+          const failures = agent_failures ?? [];
+          if (failures.length > 0) {
+            return toolText(
+              id,
+              [
+                `NOT CHECKED — ${failures.length} zone(s) could not be read, so "no agents" is ` +
+                  "not a finding here.",
+                "",
+                ...failures.map(f => `- ${f.zone}: ${f.unavailable}`),
+              ].join("\n"),
+              version,
+            );
+          }
+          return toolText(
+            id,
+            "No verified AI agent traffic in the last 24 hours (every registered zone was read).",
+            version,
+          );
         }
         const why = (c: string) =>
           c === "AI Assistant" ? "answering someone" : c === "AI Search" ? "search result" : "indexing";
@@ -659,6 +679,10 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
             "",
             ...blocks,
             "",
+            (agent_failures ?? []).length > 0
+              ? "INCOMPLETE — these zones could not be read: " +
+                (agent_failures ?? []).map(f => `${f.zone} (${f.unavailable})`).join("; ")
+              : "",
             "Verified by Cloudflare against each operator's own IP ranges, so a script cannot " +
               "appear here by calling itself ClaudeBot. 24 hours is the widest window this " +
               "dataset allows on the free plan.",
