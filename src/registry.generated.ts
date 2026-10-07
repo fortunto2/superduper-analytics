@@ -27,6 +27,7 @@ export const SOURCE_IDS = [
   "receiptbrain",
   "rustman",
   "rusty",
+  "starlapse",
   "superduperai",
   "superfinans",
   "swift-terminal",
@@ -70,6 +71,7 @@ export const APPS = [
   { id: "live2play", platform: "ios", storeId: "6794370589", site: "live2play" },
   { id: "photosweep", platform: "ios", storeId: "6794369239", site: null },
   { id: "receiptbrain", platform: "ios", storeId: "6759008528", site: null },
+  { id: "starlapse", platform: "ios", storeId: "6801191027", site: null },
   { id: "superfinans", platform: "ios", storeId: "6759007613", site: null },
   { id: "swift-terminal", platform: "ios", storeId: "6758515520", site: null },
 ] as const;
