@@ -13,6 +13,32 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 
+/**
+ * The wrangler config also pulls in .dev.vars — the REAL account id and API token. Until
+ * 2026-10-17 that meant `make test` (and `make deploy`, which runs it) sent list_products and
+ * /open.json through the production SQL and GraphQL APIs, spending metered quota and asserting
+ * against whatever the live account held that minute. The Makefile promises tests need no
+ * network and no credentials; these two settings are what keep the promise.
+ */
+export const TEST_BINDINGS = {
+  CF_ACCOUNT_ID: "00000000000000000000000000000000",
+  CF_API_TOKEN: "test-token-not-real",
+  DASHBOARD_KEY: "test-dashboard-key",
+  ANON_SALT: "test-salt",
+  INTERNAL_IPS: "203.0.113.7",
+};
+
 export default defineConfig({
-  plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.jsonc" } })],
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: "./wrangler.jsonc" },
+      miniflare: {
+        bindings: TEST_BINDINGS,
+        // Anything a test did not stub with vi.stubGlobal lands here and fails loudly, rather
+        // than reaching api.cloudflare.com with whatever token happens to be configured.
+        outboundService: (request: Request) =>
+          new Response(`tests must not reach the network: ${request.url}`, { status: 599 }),
+      },
+    }),
+  ],
 });

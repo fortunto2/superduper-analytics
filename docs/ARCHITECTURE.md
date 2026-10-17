@@ -95,8 +95,8 @@ usefully live.
 
 ## Cloudflare's own zone analytics
 
-Ten zones cover all thirteen registered sites, and Cloudflare already counts their traffic at
-the edge for free: `httpRequests1dGroups` over the GraphQL API at
+Ten zones cover every registered site (the account lists eleven; one hosts none of ours), and
+Cloudflare already counts their traffic at the edge for free: `httpRequests1dGroups` over the GraphQL API at
 `https://api.cloudflare.com/client/v4/graphql` gives requests, page views, uniques and threats
 per day. No ingestion, no storage, no snippet — it is already there.
 

@@ -2,7 +2,7 @@
 # Every target must work from a clean checkout; `test` and `integration` must not need
 # network or Cloudflare credentials.
 
-.PHONY: help install gen check db stores dev test typecheck lint format integration sync deploy tail clean
+.PHONY: help install gen agents check db stores dev test typecheck lint format integration sync deploy tail clean
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sort | \
@@ -14,6 +14,9 @@ install: ## install dependencies
 gen: ## regenerate code from the registry and from wrangler.jsonc
 	pnpm tsx cli/main.ts gen --registry registry/sources.yaml
 	pnpm wrangler types --path=worker-configuration.d.ts
+
+agents: ## refresh the AI-agent list from ai.robots.txt (network) — review the diff before committing
+	pnpm tsx cli/main.ts agents
 
 check: ## validate the registry, generated code and the snippet budget
 	pnpm tsx cli/main.ts check --registry registry/sources.yaml

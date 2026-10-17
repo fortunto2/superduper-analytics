@@ -31,7 +31,7 @@
 import { SITES } from "./registry.generated";
 import { CHART_CSS, CHART_JS } from "./chart";
 import { fetchStats, type StatsEnv } from "./stats";
-import { fetchAgentTraffic, isAgentFailure, type AgentTraffic } from "./agents";
+import { fetchAgentsForZones, isAgentFailure, type AgentTraffic } from "./agents";
 import { listZones, zoneForHost, type ZonesEnv } from "./zones";
 
 /** How long the numbers may be stale. Nobody refreshes a public metrics page for a live figure. */
@@ -71,8 +71,11 @@ export type OpenProduct = {
    *
    * Per product, not per zone. Six properties share the superduperai.co zone, so the zone total
    * cannot be attributed to any one of them; the hostname can, and Cloudflare reports it.
+   *
+   * `null` when this product's zone could not be read. Never 0 in that case: a zero on a public
+   * page is a claim, and the claim would be about a query that failed.
    */
-  ai_requests: number;
+  ai_requests: number | null;
 };
 
 /**
@@ -88,6 +91,11 @@ export type OpenAgents = {
   /** 24, and stated rather than assumed: it is a different window from the table above. */
   window_hours: number;
   agents: { agent: string; operator: string; requests: number }[];
+  /**
+   * True when some zones could not be read, so `requests` is a floor. Which zones is not
+   * published: a zone name would reveal that unpublished products live on it.
+   */
+  incomplete: boolean;
 };
 
 export type OpenReport = {
@@ -140,7 +148,7 @@ export async function buildOpenReport(
       people_days: rows.reduce((sum, row) => sum + row.people_seen, 0),
       page_views: rows.reduce((sum, row) => sum + row.page_views, 0),
       engaged: rows.reduce((sum, row) => sum + row.engaged, 0),
-      ai_requests: 0,
+      ai_requests: null,
     });
   }
   const publishedIds = new Set(report.products.map((p) => p.id));
@@ -148,48 +156,51 @@ export async function buildOpenReport(
   report.products.sort((a, b) => b.page_views - a.page_views);
 
   // Best-effort, like everywhere else Cloudflare is involved: a public page that shows nothing
-  // because somebody else's GraphQL hiccuped is worse than one missing a block.
-  try {
-    const zones = await listZones(env);
-    const ours = zones.filter((zone) =>
-      SITES.some((site) => !site.retired && zoneForHost(site.host, zones)?.tag === zone.tag),
-    );
-    const perZone = (
-      await Promise.all(ours.map((zone) => fetchAgentTraffic(env, zone, now).catch(() => undefined)))
-    ).filter((z): z is AgentTraffic => z !== undefined && !isAgentFailure(z));
+  // because somebody else's GraphQL hiccuped is worse than one missing a block. But a failed
+  // zone is never published as zero agents — see `ai_requests` and `incomplete`.
+  const listed = await listZones(env);
+  const ours = listed.zones.filter((zone) =>
+    SITES.some((site) => !site.retired && zoneForHost(site.host, listed.zones)?.tag === zone.tag),
+  );
+  const results = await fetchAgentsForZones(env, ours, now);
+  const perZone = results.filter((z): z is AgentTraffic => !isAgentFailure(z));
+  const failedZones = new Set(results.filter(isAgentFailure).map((f) => f.zone));
+  const incomplete = listed.problem !== undefined || failedZones.size > 0;
 
-    const byAgent = new Map<string, { agent: string; operator: string; requests: number }>();
-    let requests = 0;
-    for (const zone of perZone) {
-      requests += zone.ai_requests;
-      for (const a of zone.agents) {
-        const found = byAgent.get(a.agent);
-        if (found === undefined) {
-          byAgent.set(a.agent, { agent: a.agent, operator: a.operator, requests: a.requests });
-        } else {
-          found.requests += a.requests;
-        }
+  const byAgent = new Map<string, { agent: string; operator: string; requests: number }>();
+  let requests = 0;
+  for (const zone of perZone) {
+    requests += zone.ai_requests;
+    for (const a of zone.agents) {
+      const found = byAgent.get(a.agent);
+      if (found === undefined) {
+        byAgent.set(a.agent, { agent: a.agent, operator: a.operator, requests: a.requests });
+      } else {
+        found.requests += a.requests;
       }
     }
-    // Каждому опубликованному продукту — его собственный хост. Зона тут ни при чём.
-    const byHost = new Map<string, number>();
-    for (const zone of perZone) {
-      for (const h of zone.by_host) byHost.set(h.host, (byHost.get(h.host) ?? 0) + h.requests);
-    }
-    for (const product of report.products) {
-      const site = SITES.find((x) => x.id === product.id);
-      if (site !== undefined) product.ai_requests = byHost.get(site.host.toLowerCase()) ?? 0;
-    }
+  }
+  // Каждому опубликованному продукту — его собственный хост. Зона тут ни при чём.
+  const byHost = new Map<string, number>();
+  for (const zone of perZone) {
+    for (const h of zone.by_host) byHost.set(h.host, (byHost.get(h.host) ?? 0) + h.requests);
+  }
+  for (const product of report.products) {
+    const site = SITES.find((x) => x.id === product.id);
+    const zone = site === undefined ? undefined : zoneForHost(site.host, listed.zones);
+    product.ai_requests =
+      site === undefined || zone === undefined || failedZones.has(zone.name) || listed.problem !== undefined
+        ? null
+        : (byHost.get(site.host.toLowerCase()) ?? 0);
+  }
 
-    if (requests > 0) {
-      report.ai_agents = {
-        requests,
-        window_hours: 24,
-        agents: [...byAgent.values()].sort((a, b) => b.requests - a.requests).slice(0, 12),
-      };
-    }
-  } catch {
-    // no block rather than a wrong one
+  if (requests > 0) {
+    report.ai_agents = {
+      requests,
+      window_hours: 24,
+      agents: [...byAgent.values()].sort((a, b) => b.requests - a.requests).slice(0, 12),
+      incomplete,
+    };
   }
 
   return report;
@@ -302,14 +313,15 @@ fetch('/open.json',{cache:'no-cache'}).then(function(r){return r.json()}).then(f
        '<div class="sub">'+esc(p.url.split('//').pop())+'</div></td>'+
        '<td class="n">'+fmt(p.people_days)+(d.sampled?'<span class="sub">+</span>':'')+'</td>'+
        '<td class="n">'+fmt(p.page_views)+'</td><td class="n">'+fmt(p.engaged)+'</td>'+
-       '<td class="n">'+fmt(p.ai_requests||0)+'</td></tr>'});
+       '<td class="n">'+(p.ai_requests==null?'\u2014':fmt(p.ai_requests))+'</td></tr>'});
   h+='</tbody></table><p class="sub" style="margin:14px 0 0">People-days (daily uniques added up, '+
      'not unique humans), page views and engaged: last '+
      d.window_days+' days'+(d.sampled?'; \u201c+\u201d marks a lower bound, the store sampled this window':'')+
-     '. AI agents: last 24 hours, the widest window this dataset allows.</p>';
+     '. AI agents: last 24 hours, the widest window this dataset allows; \u2014 means that site could not be read.</p>';
   if(d.ai_agents&&d.ai_agents.agents.length){
     h+='<p class="sub" style="margin:18px 0 6px">Who they were, across every site we run \u2014 '+
-       fmt(d.ai_agents.requests)+' requests in 24 hours:</p><p class="sub">'+
+       (d.ai_agents.incomplete?'at least ':'')+fmt(d.ai_agents.requests)+' requests in 24 hours'+
+       (d.ai_agents.incomplete?' (some sites could not be read this time)':'')+':</p><p class="sub">'+
        d.ai_agents.agents.map(function(a){return esc(a.agent)+' ('+fmt(a.requests)+')'}).join(', ')+'</p>';
   }
   el.innerHTML=h;

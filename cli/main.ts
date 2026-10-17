@@ -50,16 +50,31 @@ function fail(message: string): never {
 }
 
 /**
- * Refreshing the AI-agent list needs the network, and `gen` must survive without it: the
- * committed file is the fallback, so a plane or a flaky DNS costs you a stale list rather than
- * a broken build. Only a missing file is fatal.
+ * Refreshing the AI-agent list, as its own command — `make agents` — never as a side effect.
+ *
+ * It used to run inside every `gen`, which `make dev`, `typecheck` and `deploy` all call, from
+ * an unpinned `main` branch upstream. So whatever the upstream list did that morning was
+ * deployed and then swept into the next unrelated commit: a registry-only commit carried five
+ * new crawler tokens nobody had looked at. A refresh is now something you ask for, and it says
+ * what changed so the diff can be read before it is committed.
  */
 async function genAgents(): Promise<void> {
   const outPath = flag("agents-out", DEFAULT_AGENTS);
+  const before = existsSync(outPath) ? readFileSync(outPath, "utf8") : "";
   try {
     const agents = await fetchAgents();
-    writeFileSync(outPath, renderAgents(agents));
-    console.log(`${outPath} — ${agents.length} AI agents from ai.robots.txt`);
+    const rendered = renderAgents(agents);
+    writeFileSync(outPath, rendered);
+    const tokens = (text: string) => new Set([...text.matchAll(/^\s*\["([^"]+)"/gm)].map((m) => m[1]));
+    const old = tokens(before);
+    const now = tokens(rendered);
+    const added = [...now].filter((t) => !old.has(t));
+    const removed = [...old].filter((t) => !now.has(t));
+    console.log(
+      `${outPath} — ${agents.length} AI agents from ai.robots.txt; ` +
+        `added ${added.length}${added.length ? ` (${added.join(", ")})` : ""}, ` +
+        `removed ${removed.length}${removed.length ? ` (${removed.join(", ")})` : ""}`,
+    );
   } catch (error) {
     if (!existsSync(outPath)) throw error;
     console.log(
@@ -175,6 +190,8 @@ try {
   switch (command) {
     case "gen":
       gen();
+      break;
+    case "agents":
       await genAgents();
       break;
     case "check":

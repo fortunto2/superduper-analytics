@@ -25,8 +25,9 @@
  * Streamable HTTP, stateless, answering application/json. The spec permits a plain JSON reply
  * instead of opening an SSE stream, and with no session state a stream would carry nothing.
  */
+import { formatAgentTraffic, formatCoverage } from "./edge-report";
 import { SITES, SOURCE_IDS } from "./registry.generated";
-import { fetchOverview, type OverviewEnv } from "./overview";
+import { fetchOverview, isReporting, type OverviewEnv } from "./overview";
 import { fetchRetention } from "./retention";
 import { fetchNetwork } from "./network";
 import { METRIC_SLOTS } from "./registry";
@@ -115,10 +116,12 @@ const TOOLS = [
     name: "agent_traffic",
     title: "Which AI agents read the sites",
     description:
-      "Named AI agents that fetched the busiest zone in the last 24 hours, with the operator " +
-      "behind each and why it came. The distinction matters: an AI Assistant fetch means a " +
-      "person asked a question right now, an AI Crawler is building an index. These never " +
-      "appear in `traffic` — agents do not run JavaScript, so the counter never sees them.",
+      "Named AI agents that fetched each registered zone in the last 24 hours, with the " +
+      "operator behind each and why it came. The distinction matters: an AI Assistant fetch " +
+      "means a person asked a question right now, an AI Crawler is building an index. Zones " +
+      "that could not be read are listed as such, never counted as zero. Agents do not run " +
+      "JavaScript, so the web snippet never sees them; the one exception is agentboard, which " +
+      "counts its own requests server-side and shows up in `traffic` as platform `server`.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -307,7 +310,7 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
         const result = await fetchOverview(env, 7, now);
         const reporting = new Set(
           result.ok
-            ? result.overview.stats.sources.filter(r => r.page_views > 0).map(r => r.source)
+            ? result.overview.stats.sources.filter(isReporting).map(r => r.source)
             : [],
         );
         const lines = [
@@ -463,7 +466,10 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
       if (!result.ok) {
         return toolText(id, `Could not read the store: ${JSON.stringify(result.body)}`, version, true);
       }
-      const { stats, coverage, agents, agent_failures, sites_reporting, sites_total } = result.overview;
+      const {
+        stats, coverage, agents, agent_failures, agent_zones_read, zone_failures,
+        sites_reporting, sites_total,
+      } = result.overview;
 
       if (name === "traffic") {
         const rows = stats.sources.map(
@@ -606,89 +612,17 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
       }
 
       if (name === "counter_coverage") {
-        const rows = coverage.map(
-          c =>
-            `- ${c.zone} — edge ${c.edge_page_views} (all traffic), ours ` +
-            `${c.our_page_views} (browsers) — ${c.our_page_views > 0 ? "reporting" : "NO COUNTER"}` +
-            ` — covers ${c.sites.join(", ")}`,
-        );
-        return toolText(
-          id,
-          [
-            `Last ${days} day(s), by domain.`,
-            "",
-            ...(rows.length > 0 ? rows : ["Cloudflare edge data unavailable."]),
-            "",
-            "The two figures are different populations and their ratio means nothing — on one " +
-              "measured domain 86% of edge traffic was curl and unidentified scrapers against " +
-              "~12% real browsers. Read each row as installed or not installed.",
-          ].join("\n"),
-          version,
-        );
+        const r = formatCoverage({ days, coverage, failures: zone_failures ?? [] });
+        return toolText(id, r.text, version, r.isError);
       }
 
       if (name === "agent_traffic") {
-        if (agents === undefined || agents.length === 0) {
-          // An empty answer has two causes and only one of them is "nobody came". If any zone
-          // could not be read, say so and name it: reporting a failed read as an absence of
-          // agents is the same false green as a linter that passes because it never ran.
-          const failures = agent_failures ?? [];
-          if (failures.length > 0) {
-            return toolText(
-              id,
-              [
-                `NOT CHECKED — ${failures.length} zone(s) could not be read, so "no agents" is ` +
-                  "not a finding here.",
-                "",
-                ...failures.map(f => `- ${f.zone}: ${f.unavailable}`),
-              ].join("\n"),
-              version,
-            );
-          }
-          return toolText(
-            id,
-            "No verified AI agent traffic in the last 24 hours (every registered zone was read).",
-            version,
-          );
-        }
-        const why = (c: string) =>
-          c === "AI Assistant" ? "answering someone" : c === "AI Search" ? "search result" : "indexing";
-
-        // Каждая зона отдельным блоком: складывать их в один список значило бы потерять
-        // ответ на вопрос «кто читает ЭТОТ сайт», ради которого сюда и смотрят.
-        const total = agents.reduce((sum, z) => sum + z.ai_requests, 0);
-        const blocks = agents.map(z =>
-          [
-            `## ${z.zone} — ${z.ai_requests} requests`,
-            ...z.agents.map(
-              a => `- ${a.agent}${a.operator ? ` (${a.operator})` : ""} — ${why(a.category)} — ${a.requests}`,
-            ),
-            z.ai_paths.length > 0
-              ? `They read: ${z.ai_paths.slice(0, 6).map(p => `${p.path} (${p.requests})`).join(", ")}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        );
-
-        return toolText(
-          id,
-          [
-            `Last 24 hours — ${total} requests from verified AI agents across ` +
-              `${agents.length} zone(s).`,
-            "",
-            ...blocks,
-            "",
-            (agent_failures ?? []).length > 0
-              ? "INCOMPLETE — these zones could not be read: " +
-                (agent_failures ?? []).map(f => `${f.zone} (${f.unavailable})`).join("; ")
-              : "",
-            "Verified by Cloudflare against each operator's own IP ranges, so a script cannot " +
-              "appear here by calling itself ClaudeBot. 24 hours is the widest window this " +
-              "dataset allows on the free plan.",
-          ].join("\n\n"),
-          version,
-        );
+        const r = formatAgentTraffic({
+          agents: agents ?? [],
+          failures: agent_failures ?? [],
+          read: agent_zones_read ?? 0,
+        });
+        return toolText(id, r.text, version, r.isError);
       }
 
       return rpcError(id, -32603, `Tool declared but not implemented: ${name}`, version);

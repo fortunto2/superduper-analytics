@@ -70,7 +70,6 @@ sites:
   - id: agentboard
     url: https://board.rustman.org
     public: true
-
   - id: rustman
     url: https://rustman.org
   - id: akbuzat
@@ -148,6 +147,12 @@ apps:
     platform: ios
     bundle_id: co.superduperai.KissMyTask
     app_id: "6758514439"
+  # Starlapse: long-exposure astrophotography. No site of its own; the App Store listing is
+  # the landing. Added 6 October 2026 with 1.0.3, the first build that counts launches.
+  - id: starlapse
+    platform: ios
+    bundle_id: co.superduperai.starlapse
+    app_id: "6801191027"
 
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
 #
@@ -173,13 +178,6 @@ apps:
 # ВАЖНО: ноль в слоте означает и «прислали ноль», и «не прислали ничего» — двух разных чисел
 # на одной позиции не бывает. Поэтому агрегат всегда сужают по имени события (`blob3`), а не
 # берут по всей таблице: событие, которое такую метрику не шлёт, иначе утянет среднее к нулю.
-  # Starlapse: long-exposure astrophotography. No site of its own; the App Store listing is
-  # the landing. Added 6 October 2026 with 1.0.3, the first build that counts launches.
-  - id: starlapse
-    platform: ios
-    bundle_id: co.superduperai.starlapse
-    app_id: "6801191027"
-
 metrics:
   # Сколько дней прошло от самого раннего элемента серии до этого. Когортная величина: отделяет
   # новичка от человека, который снимает восьмой месяц. Дат не содержит — только расстояние

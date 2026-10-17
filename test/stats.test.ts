@@ -2,8 +2,8 @@
  * The SQL is the risky part, not the HTTP. A wrong aggregate here returns a plausible number
  * and no error, so these tests read the query text itself.
  */
-import { describe, expect, it } from "vitest";
-import { buildQuery, fetchStats, parseRows,
+import { describe, expect, it, vi } from "vitest";
+import { askSql, buildQuery, fetchStats, parseRows,
   buildCampaignQuery,
   parseCampaigns,
 } from "../src/stats";
@@ -240,5 +240,31 @@ describe("what each campaign brought", () => {
     expect(parseCampaigns({ data: [] })).toEqual([]);
     expect(parseCampaigns(null)).toEqual([]);
     expect(parseCampaigns({})).toEqual([]);
+  });
+});
+
+describe("askSql releases its connection", () => {
+  /**
+   * A Worker may hold six connections at once. fetchStats fires seven SQL queries together and
+   * used to read no body until all seven had resolved, so the runtime cancelled one and the
+   * whole overview answered 500 — "Response closed due to connection limit" in the tail, on
+   * two of three /mcp calls on 13 Oct 2026. Reading the body before resolving frees the slot.
+   */
+  it("has consumed the upstream body by the time it resolves", async () => {
+    const upstream: Response[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const r = new Response(JSON.stringify({ data: [] }), { status: 200 });
+        upstream.push(r);
+        return r;
+      }),
+    );
+    const res = await askSql(env, "SELECT 1");
+    expect(upstream[0]?.bodyUsed).toBe(true);
+    // ...and the caller still gets a normal Response it can read.
+    expect(res.ok).toBe(true);
+    expect(await res.json()).toEqual({ data: [] });
+    vi.unstubAllGlobals();
   });
 });

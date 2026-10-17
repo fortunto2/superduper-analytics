@@ -413,11 +413,21 @@ export function parseGoals(payload: unknown): Goal[] {
  * успела разойтись: одна возвращала текст ответа, другая код, третья молча отдавала ноль строк
  * как «страницу никто не читал».
  */
-export function askSql(env: StatsEnv, sql: string): Promise<Response> {
-  return fetch(`${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID ?? ""}/analytics_engine/sql`, {
+export async function askSql(env: StatsEnv, sql: string): Promise<Response> {
+  const upstream = await fetch(`${SQL_ENDPOINT}/${env.CF_ACCOUNT_ID ?? ""}/analytics_engine/sql`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.CF_API_TOKEN ?? ""}` },
     body: sql,
+  });
+  // Read to the end before handing it back. A Worker holds at most six connections, and a
+  // response whose body nobody has read keeps its slot: fetchStats fires seven of these at
+  // once and reads none until all have arrived, so the runtime cancelled one and the whole
+  // overview answered 500 ("Response closed due to connection limit"). A buffered copy frees
+  // the slot immediately and is still a Response to every caller.
+  return new Response(await upstream.arrayBuffer(), {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: upstream.headers,
   });
 }
 

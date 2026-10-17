@@ -3,9 +3,16 @@
  * ones about what must NOT appear on it.
  */
 import { SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
-import { OPEN_PAGE } from "../src/open";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OPEN_PAGE, buildOpenReport } from "../src/open";
 import { SITES } from "../src/registry.generated";
+
+/**
+ * Spelled out rather than derived from the registry on purpose: publishing a product must be
+ * two deliberate edits, so a stray `public: true` cannot reach the open internet on the
+ * strength of one. Adding a name here is the second half of that decision.
+ */
+const PUBLISHED = ["agentboard", "airsignal", "life2film", "live2play", "superduperai", "visaphoto"];
 
 describe("what may be published", () => {
   it("is opt-in: most registered sites are not public", () => {
@@ -14,20 +21,8 @@ describe("what may be published", () => {
     expect(open.length).toBeLessThan(SITES.length);
   });
 
-  /**
-   * The list is spelled out rather than derived from the registry on purpose: publishing a
-   * product must be two deliberate edits, so a stray `public: true` cannot reach the open
-   * internet on the strength of one. Adding a name here is the second half of that decision.
-   */
   it("publishes exactly the sites the registry marks, and no others", () => {
-    expect(SITES.filter((s) => s.open).map((s) => s.id).sort()).toEqual([
-      "agentboard",
-      "airsignal",
-      "life2film",
-      "live2play",
-      "superduperai",
-      "visaphoto",
-    ]);
+    expect(SITES.filter((s) => s.open).map((s) => s.id).sort()).toEqual(PUBLISHED);
   });
 });
 
@@ -59,8 +54,7 @@ describe("the public routes", () => {
     const ids = body.products.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
     // Only those flagged `public: true` may ever appear here.
-    for (const id of ids)
-      expect(["superduperai", "live2play", "life2film", "visaphoto", "airsignal", "agentboard"]).toContain(id);
+    for (const id of ids) expect(PUBLISHED).toContain(id);
   });
 
   it("marks people as a floor whenever the window was sampled", async () => {
@@ -114,5 +108,55 @@ describe("the page's own script", () => {
   it("contains no backslashes at all, which is the only rule that makes that safe", () => {
     // Cheaper and stricter than reasoning about which escapes survive: forbid them outright.
     expect(inlineScript(OPEN_PAGE)).not.toContain("\\");
+  });
+});
+
+/**
+ * A zone that could not be read must never be published as "0 AI agents". On a page whose
+ * whole claim is that the numbers are not massaged, a zero is a statement of fact.
+ */
+describe("buildOpenReport with Cloudflare partly down", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const env = { DATASET: "superduper_events", CF_ACCOUNT_ID: "acc", CF_API_TOKEN: "tok" };
+  const sql = () =>
+    new Response(JSON.stringify({ data: [
+      { source: "visaphoto", platform: "web", events: 9, page_views: 5, engaged: 4, people_raw: 3 },
+      { source: "life2film", platform: "web", events: 9, page_views: 4, engaged: 2, people_raw: 2 },
+      { source: "rustman", platform: "web", events: 9, page_views: 9, engaged: 1, people_raw: 2 },
+    ] }));
+
+  it("publishes only public products, and no agent number when the zone list failed", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      url.includes("/analytics_engine/sql") ? sql() : new Response("denied", { status: 403 })));
+    const report = await buildOpenReport(env, 7, Date.UTC(2026, 9, 17, 3));
+    const ids = report.products.map((p) => p.id);
+    expect(ids).toContain("visaphoto");
+    expect(ids).not.toContain("rustman");
+    for (const p of report.products) expect(p.ai_requests).toBeNull();
+    expect(report.ai_agents).toBeUndefined();
+  });
+
+  it("marks the agent total as a floor and blanks the product whose zone failed", async () => {
+    const zones = [{ id: "v", name: "visayes.app" }, { id: "l", name: "life2film.com" }];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/analytics_engine/sql")) return sql();
+      if (url.includes("/zones")) {
+        return new Response(JSON.stringify({ success: true, result: zones, result_info: { total_pages: 1 } }));
+      }
+      const tag = JSON.parse(String(init?.body)).variables.zone;
+      if (tag === "v") return new Response("nope", { status: 500 });
+      return new Response(JSON.stringify({ data: { viewer: { zones: [{
+        byCategory: [{ count: 4, dimensions: { verifiedBotCategory: "AI Crawler" } }],
+        agents: [{ count: 4, dimensions: { userAgent: "GPTBot/1.1", verifiedBotCategory: "AI Crawler" } }],
+        aiPaths: [],
+        byHost: [{ count: 4, dimensions: { clientRequestHTTPHost: "life2film.com" } }],
+      }] } } }));
+    }));
+    const report = await buildOpenReport(env, 7, Date.UTC(2026, 9, 17, 5));
+    const byId = Object.fromEntries(report.products.map((p) => [p.id, p.ai_requests]));
+    expect(byId.visaphoto).toBeNull();
+    expect(byId.life2film).toBe(4);
+    expect(report.ai_agents?.incomplete).toBe(true);
+    expect(report.ai_agents?.requests).toBe(4);
   });
 });

@@ -17,8 +17,10 @@
  * NEVER ADD THE TWO TOGETHER. The edge counts HTTP requests including bots, assets and API
  * calls; we count what a snippet chose to report. Their ratio is meaningful; their sum is not.
  *
- * Everything here degrades to `undefined` rather than throwing: the dashboard must still
- * render its own numbers when Cloudflare's side is unavailable.
+ * Nothing here throws, and nothing here fails silently. The dashboard must still render its
+ * own numbers when Cloudflare is unavailable, so failures come back as values — but as values
+ * with a REASON attached to the zone they cost. An empty list used to mean both "no zones"
+ * and "the request failed", and every verdict built on it inherited the ambiguity.
  */
 
 const API = "https://api.cloudflare.com/client/v4";
@@ -36,6 +38,13 @@ export type ZoneTotals = Zone & {
 
 export type ZonesEnv = { CF_API_TOKEN?: string };
 
+/** A zone that could not be read, and why. The reason is the diagnosis; keep it verbatim. */
+export type ZoneFailure = { zone: string; unavailable: string };
+
+function reasonOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Zones in as few requests as the API allows, identified by `zoneTag`.
  *
@@ -48,8 +57,10 @@ export type ZonesEnv = { CF_API_TOKEN?: string };
  * Cloudflare was logging hundreds of crawler hits for. One zone too many turned a whole
  * subsystem off without a single error anywhere.
  *
- * So the list is chunked. Ten zones per request against a subrequest limit of fifty leaves
- * room for five hundred zones before this needs thinking about again.
+ * So the list is chunked. The batches are not what runs out first: one overview spends a
+ * subrequest per registered zone on the agent query as well (agents.ts), plus seven SQL reads,
+ * so the Workers ceiling of fifty arrives at roughly three dozen registered zones. Think again
+ * before the registry gets there.
  */
 export const MAX_ZONES_PER_QUERY = 10;
 
@@ -59,10 +70,10 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-const QUERY = `query($ids:[string!],$since:Date!,$until:Date!){
+const QUERY = `query($ids:[string!],$since:Date!,$until:Date!,$limit:uint64!){
   viewer{zones(filter:{zoneTag_in:$ids}){
     zoneTag
-    httpRequests1dGroups(limit:90,filter:{date_geq:$since,date_leq:$until},orderBy:[date_ASC]){
+    httpRequests1dGroups(limit:$limit,filter:{date_geq:$since,date_leq:$until},orderBy:[date_ASC]){
       dimensions{date} sum{requests pageViews} uniq{uniques}
     }
   }}
@@ -83,96 +94,76 @@ export function zoneForHost(host: string, zones: Zone[]): Zone | undefined {
     .sort((a, b) => b.name.length - a.name.length)[0];
 }
 
+/** How many pages of zones to read at most — 50 per page, so far beyond any real account. */
+const MAX_ZONE_PAGES = 20;
+
 /**
- * Why a zone list can be empty, in words.
+ * Every active zone the token can see, or the reason it could not say.
  *
- * `listZones` and `fetchZoneTotals` both degrade to `[]` so the dashboard still renders its own
- * numbers when Cloudflare is unreachable — the right call for a page, the wrong one for a
- * verdict. Downstream, an empty zone list makes every zone-derived answer empty too, and
- * `agent_traffic` reported "no verified AI agent traffic" when what had actually happened was
- * that it had no zones to ask about. This says which.
- *
- * Called only on the empty path, so it costs nothing on a healthy run.
+ * Paged: `/zones` returns at most fifty per page, and reading only the first page would make
+ * the fifty-first zone vanish from coverage and from agents with nothing marking the loss.
  */
-export async function zoneAccessProblem(env: ZonesEnv): Promise<string> {
-  if (env.CF_API_TOKEN === undefined) return "CF_API_TOKEN is not set on this Worker";
-
-  const response = await fetch(`${API}/zones?per_page=50&status=active`, {
-    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` },
-  });
-  if (!response.ok) return `GET /zones answered HTTP ${response.status}`;
-
-  const body = (await response.json()) as {
-    success?: boolean;
-    errors?: { message?: string }[];
-    result?: unknown[];
-  };
-  if (body.success !== true) {
-    return body.errors?.[0]?.message ?? "GET /zones returned success:false without a message";
+export async function listZones(env: ZonesEnv): Promise<{ zones: Zone[]; problem?: string }> {
+  if (env.CF_API_TOKEN === undefined) return { zones: [], problem: "CF_API_TOKEN is not set on this Worker" };
+  const zones: Zone[] = [];
+  try {
+    for (let page = 1; page <= MAX_ZONE_PAGES; page++) {
+      const response = await fetch(`${API}/zones?per_page=50&status=active&page=${page}`, {
+        headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` },
+      });
+      if (!response.ok) return { zones: [], problem: `GET /zones answered HTTP ${response.status}` };
+      const body = (await response.json()) as {
+        success?: boolean;
+        errors?: { message?: string }[];
+        result?: { id?: string; name?: string }[];
+        result_info?: { total_pages?: number };
+      };
+      if (body.success !== true) {
+        return { zones: [], problem: body.errors?.[0]?.message ?? "GET /zones returned success:false" };
+      }
+      for (const z of body.result ?? []) {
+        if (z.id && z.name) zones.push({ tag: z.id, name: z.name });
+      }
+      if (page >= (body.result_info?.total_pages ?? 1)) break;
+    }
+  } catch (err) {
+    return { zones: [], problem: `GET /zones failed: ${reasonOf(err)}` };
   }
-  const count = (body.result ?? []).length;
-  if (count === 0) return "the token can see no active zones — check its zone resources";
-
-  // Listing zones and reading their analytics are two different permissions, and a token with
-  // only the first passes every check above while returning nothing useful. That is exactly
-  // what happened here: `GET /zones` answered with eleven zones and the analytics query came
-  // back empty, so the code concluded the sites had no traffic. Probe the one that matters.
-  const first = (body.result as { id?: string }[])[0]?.id ?? "";
-  const probe = await fetch(`${API}/graphql`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      query: QUERY,
-      variables: { ids: [first], since: isoDay(Date.now() - 86_400_000), until: isoDay(Date.now()) },
-    }),
-  });
-  if (!probe.ok) return `${count} zone(s) visible, but the analytics query answered HTTP ${probe.status}`;
-  const probeBody = (await probe.json()) as {
-    errors?: { message?: string }[];
-    data?: { viewer?: { zones?: unknown[] } };
-  };
-  if (probeBody.errors?.length) {
-    return `${count} zone(s) visible, but analytics is refused: ${probeBody.errors[0]?.message ?? "no message"}`;
+  if (zones.length === 0) {
+    return { zones, problem: "the token can see no active zones — check its zone resources" };
   }
-  if ((probeBody.data?.viewer?.zones ?? []).length === 0) {
-    return (
-      `${count} zone(s) visible, but the analytics query returns no zone — the token most ` +
-      "likely lacks Zone Analytics:Read (listing zones is a different permission)"
-    );
-  }
-  return `${count} zone(s) are visible and readable, but none matched a registered site's host`;
+  return { zones };
 }
 
-
-export async function listZones(env: ZonesEnv): Promise<Zone[]> {
-  if (env.CF_API_TOKEN === undefined) return [];
-  const response = await fetch(`${API}/zones?per_page=50&status=active`, {
-    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}` },
-  });
-  if (!response.ok) return [];
-  const body = (await response.json()) as {
-    success?: boolean;
-    result?: { id?: string; name?: string }[];
-  };
-  if (body.success !== true) return [];
-  return (body.result ?? [])
-    .filter((z): z is { id: string; name: string } => Boolean(z.id) && Boolean(z.name))
-    .map((z) => ({ tag: z.id, name: z.name }));
-}
-
+/**
+ * Daily totals for these zones, and a named failure for every zone that did not come back.
+ *
+ * A batch that fails — refused, thrown, garbled — costs exactly its own zones and says so;
+ * the other batches stand. This is what "half an answer beats none, as long as nobody calls it
+ * whole" requires: the half that is missing has to be visible to whoever prints the verdict.
+ */
 export async function fetchZoneTotals(
   env: ZonesEnv,
   zones: Zone[],
   days: number,
   now: number,
-): Promise<ZoneTotals[]> {
-  if (env.CF_API_TOKEN === undefined || zones.length === 0) return [];
+): Promise<{ totals: ZoneTotals[]; failures: ZoneFailure[] }> {
+  if (zones.length === 0) return { totals: [], failures: [] };
+  if (env.CF_API_TOKEN === undefined) {
+    return {
+      totals: [],
+      failures: zones.map((z) => ({ zone: z.name, unavailable: "CF_API_TOKEN is not set on this Worker" })),
+    };
+  }
 
   // Chunked because eleven zones in one filter is refused outright — see MAX_ZONES_PER_QUERY.
   const batches = await Promise.all(
     chunk(zones, MAX_ZONES_PER_QUERY).map((batch) => fetchZoneBatch(env, batch, days, now)),
   );
-  return batches.flat();
+  return {
+    totals: batches.flatMap((b) => b.totals),
+    failures: batches.flatMap((b) => b.failures),
+  };
 }
 
 async function fetchZoneBatch(
@@ -180,24 +171,15 @@ async function fetchZoneBatch(
   zones: Zone[],
   days: number,
   now: number,
-): Promise<ZoneTotals[]> {
-  const response = await fetch(`${API}/graphql`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      query: QUERY,
-      variables: {
-        ids: zones.map((z) => z.tag),
-        since: isoDay(now - days * 86_400_000),
-        until: isoDay(now),
-      },
-    }),
+): Promise<{ totals: ZoneTotals[]; failures: ZoneFailure[] }> {
+  const lost = (unavailable: string) => ({
+    totals: [],
+    failures: zones.map((z) => ({ zone: z.name, unavailable })),
   });
-  if (!response.ok) return [];
 
-  const reply = (await response.json()) as {
-    // A GraphQL error arrives with HTTP 200, so the status check above proves nothing alone.
-    errors?: unknown[];
+  let reply: {
+    // A GraphQL error arrives with HTTP 200, so the status check proves nothing alone.
+    errors?: { message?: string }[];
     data?: {
       viewer?: {
         zones?: {
@@ -211,14 +193,42 @@ async function fetchZoneBatch(
       };
     };
   };
-  if (Array.isArray(reply.errors) && reply.errors.length > 0) return [];
+  try {
+    const response = await fetch(`${API}/graphql`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        query: QUERY,
+        variables: {
+          ids: zones.map((z) => z.tag),
+          // Exactly `days` dates, today included. One more is not harmless: Cloudflare refuses
+          // any range wider than 52w1d, so a 365-day window spanning 366 dates was refused
+          // outright and the one-year button never had edge data.
+          since: isoDay(now - (days - 1) * 86_400_000),
+          until: isoDay(now),
+          // One row per day in the window. A fixed 90 used to cut the one-year view down to its
+          // OLDEST ninety days while a young zone returned all of its own — two windows in one
+          // table, with nothing saying so.
+          limit: days,
+        },
+      }),
+    });
+    if (!response.ok) return lost(`daily analytics answered HTTP ${response.status}`);
+    reply = (await response.json()) as typeof reply;
+  } catch (err) {
+    return lost(`daily analytics failed: ${reasonOf(err)}`);
+  }
+  if (Array.isArray(reply.errors) && reply.errors.length > 0) {
+    return lost(`daily analytics refused: ${reply.errors[0]?.message ?? "GraphQL error without a message"}`);
+  }
 
   const byTag = new Map(zones.map((z) => [z.tag, z]));
-  const out: ZoneTotals[] = [];
+  const totals: ZoneTotals[] = [];
 
   for (const node of reply.data?.viewer?.zones ?? []) {
     const zone = node.zoneTag === undefined ? undefined : byTag.get(node.zoneTag);
     if (zone === undefined) continue;
+    byTag.delete(zone.tag);
     const rows: ZoneDay[] = (node.httpRequests1dGroups ?? []).map((g) => ({
       date: g.dimensions?.date ?? "",
       requests: g.sum?.requests ?? 0,
@@ -226,7 +236,7 @@ async function fetchZoneBatch(
       uniques: g.uniq?.uniques ?? 0,
     }));
     const total = (pick: (d: ZoneDay) => number) => rows.reduce((s, d) => s + pick(d), 0);
-    out.push({
+    totals.push({
       ...zone,
       pageViews: total((d) => d.pageViews),
       uniques: total((d) => d.uniques),
@@ -234,5 +244,12 @@ async function fetchZoneBatch(
       days: rows,
     });
   }
-  return out;
+
+  // A zone the token may LIST but not READ comes back as no node at all, with no error —
+  // listing zones and reading their analytics are separate permissions.
+  const failures = [...byTag.values()].map((z) => ({
+    zone: z.name,
+    unavailable: "no data returned for this zone — the token may lack Zone Analytics:Read for it",
+  }));
+  return { totals, failures };
 }

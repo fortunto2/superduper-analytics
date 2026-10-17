@@ -63,7 +63,7 @@ export function renderAgents(entries: AgentEntry[]): string {
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT.
 // Source: ${SOURCE}
-// Refresh with \`make gen\`. Committed so the Worker never fetches it and a clean checkout
+// Refresh with \`make agents\`. Committed so the Worker never fetches it and a clean checkout
 // builds offline; updating it is a reviewable diff rather than a silent behaviour change.
 //
 // Ordered longest token first, so "Claude-SearchBot" matches before "ClaudeBot" would.

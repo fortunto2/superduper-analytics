@@ -112,7 +112,7 @@ Analytics.configure(source: "life2film", automated: true)   // #if DEBUG
 ## There is nothing to keep updated
 
 The snippet is served by the Worker, not copied into each project. Every later change to how
-the browser reports is a deploy here — the thirteen sites are edited once and never again.
+the browser reports is a deploy here — the sites are edited once and never again.
 
 ## What it does not do
 

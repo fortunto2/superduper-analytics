@@ -302,19 +302,26 @@ function render(o){
   // и показывать зонное число рядом с именем одного продукта значит приписать ему чужое.
   if(!cur){
   h+='<div class="card"><h2>Counter coverage</h2>';
-  if(!o.edge_available) h+='<p class="empty">Cloudflare edge analytics unavailable — coverage cannot be judged.</p>';
+  if(!o.edge_available) h+='<p class="empty">Cloudflare edge analytics unavailable — coverage cannot be judged.'+
+    ((o.zone_failures||[]).length?' '+esc(o.zone_failures[0].unavailable):'')+'</p>';
   else if(!o.coverage.length) h+='<p class="empty">No registered site sits in a Cloudflare zone.</p>';
   else{
     var aiBy={};(o.agents||[]).forEach(function(z){aiBy[z.zone]=z.ai_requests});
+    // A zone that was read and had no agents is a real 0; one that could not be asked is "—".
+    // Both used to print "—", and a failed zone in the per-product rows printed "0".
+    var aiFailed={};(o.agent_failures||[]).forEach(function(f){aiFailed[f.zone]=f.unavailable});
     h+='<table><thead><tr><th>Zone</th><th class="n">Edge, all traffic</th>'+
        '<th class="n">Ours, browsers</th><th class="n">AI agents, 24h</th><th>State</th></tr></thead><tbody>';
     o.coverage.forEach(function(c){var s=status(c.our_page_views,c.edge_page_views);
       h+='<tr><td><div class="name">'+esc(c.zone)+'</div><div class="sub">'+esc(c.sites.join(', '))+'</div></td>'+
         '<td class="n">'+fmt(c.edge_page_views)+'</td><td class="n">'+fmt(c.our_page_views)+'</td>'+
-        '<td class="n">'+(aiBy[c.zone]?fmt(aiBy[c.zone]):'\u2014')+'</td>'+
+        '<td class="n">'+(aiFailed[c.zone]!==undefined?'<span title="'+esc(aiFailed[c.zone])+'">—</span>':fmt(aiBy[c.zone]||0))+'</td>'+
         '<td><span class="pill"><span class="dot" style="background:'+s.c+'"></span>'+esc(s.t)+'</span> '+
         srcLink(CFZ(c.zone,'analytics/traffic'),'zone')+'</td></tr>'});
+    var unread=(o.zone_failures||[]).concat(o.agent_failures||[]);
     h+='</tbody></table>'+
+      (unread.length?'<div class="note">Not read this time, so missing or — above rather than empty: '+
+        unread.map(function(f){return esc(f.zone)+' ('+esc(f.unavailable)+')'}).join('; ')+'</div>':'')+
       '<p class="sub" style="margin:12px 0 0">The two columns are different populations and '+
       'their ratio means nothing: on life2film.com 86% of what the edge counts is curl and '+
       'unidentified scrapers, against ~12% real browsers. Read this as installed or not '+
@@ -356,7 +363,8 @@ function render(o){
       fmt(totalAi)+' requests over the last 24 hours \u2014 '+
       'the only window this dataset allows on the free plan. Verified by Cloudflare against the '+
       'agent\u2019s own IP ranges, so a script cannot get listed here by calling itself ClaudeBot. '+
-      'These never reach our own counter: they do not run JavaScript.</p></div>';
+      'The web snippet never sees them: they do not run JavaScript. (agentboard is the exception — '+
+      'it counts its own requests server-side.)</p></div>';
   }
 
   // Кампании: единственное место, где наша половина воронки сходится с чужой. Панель рисуется

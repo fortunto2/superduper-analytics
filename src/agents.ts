@@ -24,7 +24,7 @@
  * of at most ONE DAY. There is no weekly agent view.
  */
 import { AI_AGENTS } from "./agents.generated";
-import { type Zone, type ZonesEnv } from "./zones";
+import { type Zone, type ZoneFailure, type ZonesEnv } from "./zones";
 
 const GRAPHQL = "https://api.cloudflare.com/client/v4/graphql";
 
@@ -61,8 +61,11 @@ export type AgentTraffic = {
   by_host: { host: string; requests: number }[];
 };
 
+/** The list, lower-cased once rather than on every comparison of every lookup. */
+const AGENTS_LOWER = AI_AGENTS.map(([token, operator]) => [token.toLowerCase(), token, operator] as const);
+
 /**
- * Named from the generated list — 163 agents from ai.robots.txt, refreshed by `make gen`.
+ * Named from the generated list of agents from ai.robots.txt, refreshed by `make agents`.
  * Only reached for requests Cloudflare has already verified as an AI crawler, so this names a
  * known caller rather than trusting one: a script claiming to be ClaudeBot never gets here.
  *
@@ -71,8 +74,8 @@ export type AgentTraffic = {
  */
 export function agentName(userAgent: string): { agent: string; operator: string } {
   const ua = userAgent.toLowerCase();
-  for (const [token, operator] of AI_AGENTS) {
-    if (ua.includes(token.toLowerCase())) return { agent: token, operator };
+  for (const [lower, token, operator] of AGENTS_LOWER) {
+    if (ua.includes(lower)) return { agent: token, operator };
   }
   // Verified as an AI crawler but absent from the public list — named by its browser token so
   // it can be recognised and reported upstream, rather than silently dropped.
@@ -98,10 +101,6 @@ const QUERY = `query($zone:String!,$since:Time!,$until:Time!,$ai:[string!]){view
 type Group = { count?: number; dimensions?: Record<string, string> };
 
 /**
- * One zone per call — the dataset takes a single zoneTag, unlike the daily one. Callers should
- * ask only for zones they will show, since each is a subrequest.
- */
-/**
  * Why a failure is a value here rather than an `undefined`.
  *
  * Every path out of this function used to be `return undefined`: no token, a refused request,
@@ -111,13 +110,21 @@ type Group = { count?: number; dimensions?: Record<string, string> };
  * AI Crawler, 7 AI Assistant and 4 AI Search requests for visayes.app on that very window,
  * and the tool reported none. The reason has to survive the return.
  */
-export type AgentFailure = { zone: string; unavailable: string };
+export type AgentFailure = ZoneFailure;
 export type AgentResult = AgentTraffic | AgentFailure;
 
 export function isAgentFailure(result: AgentResult): result is AgentFailure {
   return "unavailable" in result;
 }
 
+/**
+ * One zone per call — the dataset takes a single zoneTag, unlike the daily one. Callers should
+ * ask only for zones they will show, since each is a subrequest.
+ *
+ * Never rejects. A thrown fetch or a non-JSON body used to escape as an exception while an
+ * HTTP error came back as a value, so every caller grew its own catch and each one turned
+ * the failure into something different — a value in one place, a silent zero in another.
+ */
 export async function fetchAgentTraffic(
   env: ZonesEnv,
   zone: Zone,
@@ -125,7 +132,19 @@ export async function fetchAgentTraffic(
 ): Promise<AgentResult> {
   const failed = (unavailable: string): AgentFailure => ({ zone: zone.name, unavailable });
   if (env.CF_API_TOKEN === undefined) return failed("CF_API_TOKEN is not set on this Worker");
+  try {
+    return await readAgentTraffic(env, zone, now, failed);
+  } catch (err) {
+    return failed(err instanceof Error ? err.message : String(err));
+  }
+}
 
+async function readAgentTraffic(
+  env: ZonesEnv,
+  zone: Zone,
+  now: number,
+  failed: (unavailable: string) => AgentFailure,
+): Promise<AgentResult> {
   const response = await fetch(GRAPHQL, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, "content-type": "application/json" },
@@ -191,4 +210,42 @@ export async function fetchAgentTraffic(
       .filter((h) => h.host !== "")
       .sort((a, b) => b.requests - a.requests),
   };
+}
+
+/** How long one answer about the last 24 hours is reused. */
+const AGENT_CACHE_SECONDS = 600;
+
+/**
+ * Agent traffic for several zones, through one shared cache entry.
+ *
+ * The window is the last 24 hours whatever `days` the caller is looking at, yet every
+ * overview used to re-ask it: each of eight MCP tools and each of the dashboard's five window
+ * buttons sent one GraphQL query per zone — ten a call — against a quota of 300 per five
+ * minutes, and a throttled reply looks exactly like a quiet zone. One cache entry costs two
+ * subrequests instead of ten. Only complete answers are cached: a failure must be retried, not
+ * remembered for ten minutes.
+ */
+export async function fetchAgentsForZones(
+  env: ZonesEnv,
+  zones: Zone[],
+  now: number,
+): Promise<AgentResult[]> {
+  if (zones.length === 0) return [];
+  const bucket = Math.floor(now / (AGENT_CACHE_SECONDS * 1000));
+  const tags = zones.map((z) => z.tag).sort().join(",");
+  const key = new Request(`https://agents.cache.invalid/v1?zones=${tags}&t=${bucket}`);
+  const cache = typeof caches === "undefined" ? undefined : caches.default;
+
+  const hit = await cache?.match(key).catch(() => undefined);
+  if (hit !== undefined) return (await hit.json()) as AgentResult[];
+
+  const results = await Promise.all(zones.map((zone) => fetchAgentTraffic(env, zone, now)));
+  if (cache !== undefined && !results.some(isAgentFailure)) {
+    await cache
+      .put(key, new Response(JSON.stringify(results), {
+        headers: { "cache-control": `max-age=${AGENT_CACHE_SECONDS}` },
+      }))
+      .catch(() => undefined);
+  }
+  return results;
 }

@@ -6,7 +6,7 @@
  * events tells "this site has no visitors" apart from "this site has no counter" — which is
  * the only honest way to know whether the rollout is finished.
  */
-import { fetchAgentTraffic, isAgentFailure, type AgentFailure, type AgentTraffic } from "./agents";
+import { fetchAgentsForZones, isAgentFailure, type AgentFailure, type AgentTraffic } from "./agents";
 import { APPS, SITES } from "./registry.generated";
 import { readPageHistory, type PageHistoryRow } from "./rollup";
 import { LAG_DAYS, readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
@@ -16,7 +16,7 @@ import { dayBefore, utcDay } from "./stores/schema";
 /** Сайты, на которые счётчик в принципе можно поставить. */
 const LIVE_SITES = SITES.filter((s) => !s.retired);
 import { fetchStats, type Stats, type StatsEnv } from "./stats";
-import { fetchZoneTotals, listZones, zoneAccessProblem, zoneForHost, type ZonesEnv } from "./zones";
+import { fetchZoneTotals, listZones, zoneForHost, type Zone, type ZoneFailure, type ZoneTotals, type ZonesEnv } from "./zones";
 
 export type Coverage = {
   zone: string;
@@ -39,6 +39,16 @@ export function domainFamily(host: string): string {
   return parts.length <= 2 ? host : parts.slice(-2).join(".");
 }
 
+/**
+ * Whether a source row shows a working counter. A site reports either through the web snippet
+ * (page views) or, like agentboard, by counting its own requests server-side — that site has no
+ * snippet to install, so judging it by page views would list it as "not installed" forever.
+ * One rule for every place that answers the question, so they cannot drift apart.
+ */
+export function isReporting(row: { platform: string; page_views: number; events: number }): boolean {
+  return (row.platform === "web" && row.page_views > 0) || (row.platform === "server" && row.events > 0);
+}
+
 export type Overview = {
   stats: Stats;
   coverage: Coverage[];
@@ -50,7 +60,15 @@ export type Overview = {
    * бесплатного тарифа у этого датасета.
    */
   agents?: AgentTraffic[];
+  /** Registered zones whose agent query failed, with the reason. Never folded into "none". */
   agent_failures?: AgentFailure[];
+  /** How many registered zones the agent query DID read — "none found" means only these. */
+  agent_zones_read?: number;
+  /**
+   * Registered zones whose daily edge totals could not be read, with the reason. A zone here
+   * is missing from `coverage`; without this list its absence would read as "no traffic".
+   */
+  zone_failures?: ZoneFailure[];
   /** Registered sites, and how many actually reported. Counted per SITE, never per zone —
    *  six properties share the superduperai.co zone, so a zone count would claim six installs
    *  where there is one. */
@@ -99,53 +117,7 @@ export async function fetchOverview(
    * только числами края, поэтому и зоны, и агенты стартуют сразу, а stats подмешивается в
    * готовую таблицу арифметикой, которая сети не касается.
    */
-  const edge = (async () => {
-    const zones = await listZones(env);
-    const totals = await fetchZoneTotals(env, zones, days, now);
-
-    // Зоны без зарегистрированного сайта — чужие свойства аккаунта, не этот проект.
-    const registered = totals
-      .filter((zone) => SITES.some((site) => zoneForHost(site.host, zones)?.tag === zone.tag))
-      .sort((a, b) => b.pageViews - a.pageViews);
-
-    // Все зоны, а не самая нагруженная. Раньше страница называлась общей, а показывала агентов
-    // одного домена — и получалось, что у остальных их будто нет. Каждая зона это один
-    // субзапрос; они идут разом, поэтому стоит это столько же, сколько стоила одна.
-    // No zones is not "no agents": Promise.all over an empty list resolves to an empty list
-    // with no error anywhere, which is exactly how a missing token came out looking like a
-    // quiet week. Say what happened instead.
-    if (registered.length === 0) {
-      // Which of the three steps emptied out is the whole diagnosis, so the message names the
-      // counts rather than guessing: zones listed, zones with daily totals, zones matched.
-      const detail =
-        zones.length === 0
-          ? await zoneAccessProblem(env)
-          : totals.length === 0
-            ? `${zones.length} zone(s) listed, but the daily analytics query returned none — ` +
-              (await zoneAccessProblem(env))
-            : `${totals.length} zone(s) have data, but none matched a registered site's host`;
-      return { zones, totals: registered, agents: [], agentFailures: [{ zone: "(no zones)", unavailable: detail }] };
-    }
-
-    const results = await Promise.all(
-      registered.map((zone) =>
-        fetchAgentTraffic(env, zone, now).catch(
-          (err: unknown): AgentFailure => ({
-            zone: zone.name,
-            unavailable: err instanceof Error ? err.message : String(err),
-          }),
-        ),
-      ),
-    );
-    // Two lists, because "no agents came" and "the question could not be asked" are different
-    // answers and only one of them is good news.
-    const agents = results.filter(
-      (a): a is AgentTraffic => !isAgentFailure(a) && a.agents.length > 0,
-    );
-    const agentFailures = results.filter(isAgentFailure);
-
-    return { zones, totals: registered, agents, agentFailures };
-  })();
+  const edge = readEdge(env, days, now);
 
   // Окно поиска сдвинуто: консоль отдаёт данные с отставанием в два-три дня, и запрос за
   // «последние 7 дней, считая сегодня» вернул бы три пустых дня и заниженные итоги.
@@ -198,17 +170,16 @@ export async function fetchOverview(
     searchPromise,
     searchDailyPromise,
     historyPromise,
-    edge.catch(() => null),
+    // readEdge does not throw by design; this is the backstop that keeps a bug in it from being
+    // reported as "every zone was read".
+    edge.catch((err: unknown) => edgeUnavailable(`edge read failed: ${err instanceof Error ? err.message : String(err)}`)),
   ]);
   if (!stats.ok) return stats;
 
-  const edgeAvailable = edgeResult !== null && edgeResult.totals.length > 0;
-  const agents = edgeResult?.agents ?? [];
-  const agentFailures = edgeResult?.agentFailures ?? [];
-  const coverage: Coverage[] =
-    edgeResult === null
-      ? []
-      : edgeResult.totals.map((zone) => {
+  const edgeAvailable = edgeResult.totals.length > 0;
+  const agents = edgeResult.agents;
+  const agentFailures = edgeResult.agentFailures;
+  const coverage: Coverage[] = edgeResult.totals.map((zone) => {
           // Сгруппировано по ЗОНЕ, а не по сайту: все *.superduperai.co делят одну зону, и
           // показать её трафик против каждого значило бы посчитать его шесть раз.
           const sites = SITES.filter(
@@ -230,13 +201,9 @@ export async function fetchOverview(
             our_page_views: ours,
             ratio: zone.pageViews > 0 ? ours / zone.pageViews : null,
           };
-        });
+  });
 
-  const reporting = new Set(
-    stats.stats.sources
-      .filter((row) => row.platform === "web" && row.page_views > 0)
-      .map((row) => row.source),
-  );
+  const reporting = new Set(stats.stats.sources.filter(isReporting).map((row) => row.source));
 
   // Подклеиваем к каждому источнику его домен, чтобы поддомены одного продукта стояли
   // рядом, а не разлетались по таблице по числу событий. У приложений хоста нет — им
@@ -248,12 +215,20 @@ export async function fetchOverview(
   // запрошено, число агентов приходилось показывать на всю зону сразу, то есть приписывать
   // одному продукту чтение всех соседних.
   const aiByHost = new Map<string, number>();
-  for (const zone of edgeResult?.agents ?? []) {
+  for (const zone of edgeResult.agents) {
     for (const h of zone.by_host) {
       aiByHost.set(h.host, (aiByHost.get(h.host) ?? 0) + h.requests);
     }
   }
   const fullHost = new Map<string, string>(SITES.map(s => [s.id, s.host.toLowerCase()]));
+  const failedZones = new Set(agentFailures.map((f) => f.zone));
+  const unasked = new Set<string>(
+    SITES.filter((site) => {
+      const zone = zoneForHost(site.host, edgeResult.zones);
+      // No zone at all, or a zone whose agent query failed: either way nobody asked.
+      return zone === undefined || failedZones.has(zone.name) || edgeResult.agentsRead === 0;
+    }).map((site) => site.id),
+  );
   const urlOf = new Map<string, string>(SITES.map(s => [s.id, s.url]));
   const nameOf = new Map<string, string>(SITES.map(s => [s.id, s.name]));
 
@@ -270,8 +245,13 @@ export async function fetchOverview(
       // существует только чтобы человек не читал `visaphoto` о продукте по имени VisaYes.
       name: nameOf.get(row.source) ?? row.source,
       // Только у веба: у приложения нет хоста, и приписать ему чтение сайта было бы выдумкой.
+      // A site whose zone could not be asked gets no number at all, not a zero: the dashboard
+      // draws "—" for "not asked", and a 0 there is indistinguishable from a zone that was read
+      // and really had no agents.
       ai_requests:
-        row.platform === "web" ? (aiByHost.get(fullHost.get(row.source) ?? "") ?? 0) : undefined,
+        row.platform !== "web" || unasked.has(row.source)
+          ? undefined
+          : (aiByHost.get(fullHost.get(row.source) ?? "") ?? 0),
     }))
     .sort(
       (a, b) =>
@@ -287,6 +267,8 @@ export async function fetchOverview(
       coverage,
       agents,
       agent_failures: agentFailures,
+      agent_zones_read: edgeResult.agentsRead,
+      zone_failures: edgeResult.zoneFailures,
       edge_available: edgeAvailable,
       // Выключенные сайты не считаются: цель, которой нельзя достичь, делает всю дробь
       // бессмысленной — «9 из 14» звучит как недоделанная работа, хотя четырнадцатый
@@ -299,5 +281,68 @@ export async function fetchOverview(
       history,
       apps: Object.fromEntries(APPS.map((a) => [a.id, a.storeId])),
     },
+  };
+}
+
+type EdgeResult = {
+  /** Every zone the token listed — used to map site hosts to zones. */
+  zones: Zone[];
+  /** Daily totals of registered zones that could be read, busiest first. */
+  totals: ZoneTotals[];
+  /** Zones with at least one verified AI agent in the last 24 hours. */
+  agents: AgentTraffic[];
+  agentFailures: AgentFailure[];
+  agentsRead: number;
+  zoneFailures: ZoneFailure[];
+};
+
+/** Nothing could be read at all — one reason, stated for both questions. */
+function edgeUnavailable(reason: string): EdgeResult {
+  const failure = { zone: "(all zones)", unavailable: reason };
+  return { zones: [], totals: [], agents: [], agentFailures: [failure], agentsRead: 0, zoneFailures: [failure] };
+}
+
+/**
+ * Cloudflare's side of the overview. Never throws: every way it can fall short comes back as a
+ * named failure, because an empty list here once read as "no traffic" and "no agents" for a
+ * month while the real cause was a refused query.
+ *
+ * Registered zones are picked BEFORE anything is fetched. Filtering afterwards meant asking for
+ * zones nobody would show, and building the agent list from whatever totals happened to come
+ * back — so a refused totals batch silently removed its zones from the agent question too.
+ * Totals and agents are independent questions about the same zones and go out together.
+ */
+async function readEdge(env: OverviewEnv, days: number, now: number): Promise<EdgeResult> {
+  const listed = await listZones(env);
+  if (listed.problem !== undefined) return edgeUnavailable(listed.problem);
+  const zones = listed.zones;
+
+  // Зоны без зарегистрированного сайта — чужие свойства аккаунта, не этот проект.
+  const registered = zones.filter((zone) =>
+    SITES.some((site) => zoneForHost(site.host, zones)?.tag === zone.tag),
+  );
+  if (registered.length === 0) {
+    return {
+      ...edgeUnavailable(`${zones.length} zone(s) visible to the token, but none hosts a registered site`),
+      zones,
+    };
+  }
+
+  // Все зоны, а не самая нагруженная: общая страница обязана быть общей.
+  const [daily, results] = await Promise.all([
+    fetchZoneTotals(env, registered, days, now),
+    fetchAgentsForZones(env, registered, now),
+  ]);
+
+  // Two lists, because "no agents came" and "the question could not be asked" are different
+  // answers and only one of them is good news.
+  const agentFailures = results.filter(isAgentFailure);
+  return {
+    zones,
+    totals: [...daily.totals].sort((a, b) => b.pageViews - a.pageViews),
+    agents: results.filter((a): a is AgentTraffic => !isAgentFailure(a) && a.agents.length > 0),
+    agentFailures,
+    agentsRead: results.length - agentFailures.length,
+    zoneFailures: daily.failures,
   };
 }
