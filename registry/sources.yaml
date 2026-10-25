@@ -153,6 +153,15 @@ apps:
     platform: ios
     bundle_id: co.superduperai.starlapse
     app_id: "6801191027"
+  # Crew Air: the smoke + heat shift plan for outdoor crews under Cal/OSHA §5141.1 and §3395
+  # (Stanford Cleantech hackathon, 24 October 2026). Its pages live under airsignal.app/crew,
+  # but it is its own product with its own funnel, so its own id; no `site`, because the web
+  # pages report under `airsignal`. No `app_id` yet: the App Store record is not created.
+  # Three events: app_launched, plan_viewed, sky_checked, all with the install-scoped UUID.
+  - id: crewair
+    name: Crew Air
+    platform: ios
+    bundle_id: co.superduperai.crewair
 
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
 #

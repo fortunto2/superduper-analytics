@@ -12,6 +12,7 @@ export const SOURCE_IDS = [
   "akbuzat",
   "books",
   "carettafriends",
+  "crewair",
   "currencypal",
   "driveandblock",
   "editor",
@@ -62,6 +63,7 @@ export const SITES = [
 export const APPS = [
   { id: "carettafriends", platform: "android", storeId: "", site: "carettafriends" },
   { id: "carettafriends", platform: "ios", storeId: "6794324877", site: "carettafriends" },
+  { id: "crewair", platform: "ios", storeId: "", site: null },
   { id: "currencypal", platform: "ios", storeId: "6759005730", site: null },
   { id: "driveandblock", platform: "ios", storeId: "6759738953", site: null },
   { id: "facealarm", platform: "ios", storeId: "6758454962", site: "facealarm" },
