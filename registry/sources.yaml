@@ -162,6 +162,12 @@ apps:
     name: Crew Air
     platform: ios
     bundle_id: co.superduperai.crewair
+  # Air Signal iOS (repo air-signal-ios, 25 Oct 2026): the same product as the airsignal.app
+  # site, so the shared id and one funnel. No `app_id` yet: the App Store record is not created.
+  - id: airsignal
+    platform: ios
+    bundle_id: co.superduperai.airsignal
+    site: airsignal
 
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
 #
