@@ -156,17 +156,19 @@ apps:
   # Crew Air: the smoke + heat shift plan for outdoor crews under Cal/OSHA §5141.1 and §3395
   # (Stanford Cleantech hackathon, 24 October 2026). Its pages live under airsignal.app/crew,
   # but it is its own product with its own funnel, so its own id; no `site`, because the web
-  # pages report under `airsignal`. No `app_id` yet: the App Store record is not created.
+  # pages report under `airsignal`.
   # Three events: app_launched, plan_viewed, sky_checked, all with the install-scoped UUID.
   - id: crewair
     name: Crew Air
     platform: ios
     bundle_id: co.superduperai.crewair
+    app_id: "6826939226"
   # Air Signal iOS (repo air-signal-ios, 25 Oct 2026): the same product as the airsignal.app
-  # site, so the shared id and one funnel. No `app_id` yet: the App Store record is not created.
+  # site, so the shared id and one funnel. Store name "Air Signal: Air Quality" ("Air Signal" was taken).
   - id: airsignal
     platform: ios
     bundle_id: co.superduperai.airsignal
+    app_id: "6826939471"
     site: airsignal
 
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
