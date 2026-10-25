@@ -61,6 +61,7 @@ export const SITES = [
 
 /** Apps with the id their store knows them by — what the daily store-report job iterates. */
 export const APPS = [
+  { id: "airsignal", platform: "ios", storeId: "", site: "airsignal" },
   { id: "carettafriends", platform: "android", storeId: "", site: "carettafriends" },
   { id: "carettafriends", platform: "ios", storeId: "6794324877", site: "carettafriends" },
   { id: "crewair", platform: "ios", storeId: "", site: null },
