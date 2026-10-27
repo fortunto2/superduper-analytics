@@ -34,6 +34,20 @@ describe("parseInstallDeletion", () => {
     expect(byMetric.redownloads).toBe(2);
   });
 
+  it("не считает обновление установкой — у life2film 1.14 так дала 151 «установку» за неделю", () => {
+    const { rows } = parseInstallDeletion(
+      tsv(
+        row("2026-10-21", "Install", "First-time download", "US", 2),
+        row("2026-10-21", "Install", "Manual update", "US", 30),
+        row("2026-10-21", "Install", "Auto-update", "US", 40),
+        row("2026-10-21", "Install", "Auto-download", "US", 1),
+        row("2026-10-21", "Install", "Restore", "US", 1),
+      ),
+      "life2film",
+    );
+    expect(rows).toEqual([expect.objectContaining({ metric: "installs", value: 2 })]);
+  });
+
   it("забирает удаления — то, чего в наших событиях нет и быть не может", () => {
     const { rows } = parseInstallDeletion(tsv(row("2026-08-17", "Delete", "", "MA", 1)), "life2film");
     expect(rows).toEqual([

@@ -183,7 +183,12 @@ export function parseInstallDeletion(
 
     let metric: string | undefined;
     if (event === "Install") {
-      metric = type === "Redownload" ? METRICS.redownloads : METRICS.installs;
+      // Список, а не «всё, что не Redownload»: под Install Apple кладёт и обновления
+      // (`Manual update`, `Auto-update`), и `Restore`, и `Auto-download` на второе устройство.
+      // Ни одно не новый человек. Так выход life2film 1.14 показал 151 «установку» за неделю,
+      // когда первых было 74. Без колонки отличить нельзя — тогда как раньше, всё в installs.
+      if (type === "Redownload") metric = METRICS.redownloads;
+      else if (type === "First-time download" || iType === -1) metric = METRICS.installs;
     } else if (event === "Delete") {
       metric = METRICS.deletes;
     }
