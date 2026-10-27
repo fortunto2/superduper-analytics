@@ -84,16 +84,21 @@ export async function findOrCreateRequest(token: string, appId: string): Promise
 }
 
 /** Идентификатор отчёта по его имени. `undefined` — такого отчёта у этого приложения нет. */
-export async function findReport(
+export async function findReports(
   token: string,
   requestId: string,
-  name: string,
-): Promise<string | undefined> {
+  names: readonly string[],
+): Promise<Map<string, string>> {
   // Отчётов у одного запроса полторы сотни (framework usage, performance и прочее), поэтому
-  // страница берётся большой: пагинация ради одного имени — лишний обход на каждом прогоне.
+  // страница берётся большой, и все нужные имена ищутся в ОДНОМ ответе: два отчёта не повод
+  // платить двумя обходами за каждое приложение.
   const reports = dataArray(await ascGet(token, `/analyticsReportRequests/${requestId}/reports?limit=200`));
-  const match = reports.find((r) => attrs(r).name === name);
-  return typeof match?.id === "string" ? match.id : undefined;
+  const found = new Map<string, string>();
+  for (const r of reports) {
+    const name = attrs(r).name;
+    if (typeof name === "string" && names.includes(name) && typeof r.id === "string") found.set(name, r.id);
+  }
+  return found;
 }
 
 /** Один инстанс — это сутки (для DAILY). `processingDate` и есть день, который он описывает. */
@@ -129,71 +134,65 @@ export async function fetchSegment(url: string): Promise<string> {
   return await new Response(stream).text();
 }
 
+/** Имя второго отчёта: установки и переустановки. См. `parseDownloads`. */
+export const DOWNLOADS_REPORT = "App Downloads Standard";
+
 /**
- * TSV отчёта об установках и удалениях → строки для `store_daily`.
+ * Что значит строка отчёта: метрика, `null` — строка известная, но не наша, `undefined` —
+ * незнакомая (её считаем в `skipped`, чтобы новый тип у Apple был виден, а не проглочен).
+ */
+type Classify = (cell: (name: string) => string) => string | null | undefined;
+
+/**
+ * Общий разбор обоих отчётов: TSV → суммы по (день, метрика, страна).
  *
  * Колонки читаются ПО ИМЕНИ, а не по позиции: Apple их дописывает, и жёсткий индекс однажды
  * начнёт означать соседнюю колонку молча. Ровно та же логика, что у блоб-слотов, только здесь
  * заголовок приходит вместе с данными и сверяться можно на каждом файле.
  *
- * Смысл колонок, который стоит помнить:
- *   - `Event` — Install или Delete;
- *   - `Download Type` — «First-time download» против «Redownload». Переустановка не новый человек;
- *   - `Counts` — событий, `Unique Devices` — устройств. Берём Counts: для удалений это одно и то
- *     же, а для установок разница как раз и есть переустановки, которые уже разделены типом;
- *   - `App Download Date` — когда это устройство поставило приложение. Здесь НЕ используется:
- *     `store_daily` не имеет измерения когорты, и вписать его туда значило бы сложить в одну
- *     ячейку два разных дня. Когортное удержание — отдельная таблица, когда понадобится.
+ * Суммируем в памяти: один день одной страны приходит десятками строк, разбитых по устройству,
+ * версии ОС и источнику перехода. Писать их по одной значило бы сто UPSERT-ов там, где хватит
+ * трёх, и хранить в D1 разрезы, которых дашборд не спрашивает.
  */
-export function parseInstallDeletion(
+function parseDaily(
   tsv: string,
   source: string,
+  report: string,
+  required: string[],
+  classify: Classify,
 ): { rows: StoreRow[]; skipped: number } {
   const lines = tsv.split("\n").filter((l) => l.trim() !== "");
   const header = lines.shift();
   if (header === undefined) return { rows: [], skipped: 0 };
 
   const columns = header.split("\t").map((c) => c.trim());
-  const at = (name: string): number => columns.indexOf(name);
-  const iDay = at("Date");
-  const iEvent = at("Event");
-  const iType = at("Download Type");
-  const iTerritory = at("Territory");
-  const iCounts = at("Counts");
-  if (iDay === -1 || iEvent === -1 || iCounts === -1) {
-    throw new Error(`unexpected columns in installation report: ${columns.slice(0, 6).join(", ")}`);
+  const missing = ["Date", "Counts", ...required].filter((c) => !columns.includes(c));
+  if (missing.length > 0) {
+    throw new Error(`unexpected columns in ${report}: no ${missing.join(", ")} in ${columns.slice(0, 6).join(", ")}`);
   }
+  const iDay = columns.indexOf("Date");
+  const iTerritory = columns.indexOf("Territory");
+  const iCounts = columns.indexOf("Counts");
 
-  // Суммируем в памяти: один день одной страны приходит десятками строк, разбитых по устройству,
-  // версии ОС и источнику перехода. Писать их по одной значило бы сто UPSERT-ов там, где хватит
-  // трёх, и хранить в D1 разрезы, которых дашборд не спрашивает.
   const totals = new Map<string, StoreRow>();
   let skipped = 0;
   for (const line of lines) {
     const cells = line.split("\t");
+    const cell = (name: string): string => {
+      const i = columns.indexOf(name);
+      return i === -1 ? "" : (cells[i] ?? "").trim();
+    };
     const day = (cells[iDay] ?? "").trim();
-    const event = (cells[iEvent] ?? "").trim();
-    const type = iType === -1 ? "" : (cells[iType] ?? "").trim();
     const country = iTerritory === -1 ? "" : (cells[iTerritory] ?? "").trim();
     const value = Number((cells[iCounts] ?? "").trim());
     if (day === "" || !Number.isFinite(value)) {
       skipped += 1;
       continue;
     }
-
-    let metric: string | undefined;
-    if (event === "Install") {
-      // Список, а не «всё, что не Redownload»: под Install Apple кладёт и обновления
-      // (`Manual update`, `Auto-update`), и `Restore`, и `Auto-download` на второе устройство.
-      // Ни одно не новый человек. Так выход life2film 1.14 показал 151 «установку» за неделю,
-      // когда первых было 74. Без колонки отличить нельзя — тогда как раньше, всё в installs.
-      if (type === "Redownload") metric = METRICS.redownloads;
-      else if (type === "First-time download" || iType === -1) metric = METRICS.installs;
-    } else if (event === "Delete") {
-      metric = METRICS.deletes;
-    }
-    // Незнакомое событие пропускаем со счётом, а не роняем прогон: Apple добавит тип, и падать
-    // из-за него было бы хуже, чем не знать про него сутки.
+    const metric = classify(cell);
+    if (metric === null) continue;
+    // Незнакомое пропускаем со счётом, а не роняем прогон: Apple добавит тип, и падать из-за
+    // него было бы хуже, чем не знать про него сутки.
     if (metric === undefined) {
       skipped += 1;
       continue;
@@ -208,4 +207,49 @@ export function parseInstallDeletion(
     }
   }
   return { rows: [...totals.values()], skipped };
+}
+
+/**
+ * Отчёт об установках и удалениях → только УДАЛЕНИЯ.
+ *
+ * Установки здесь тоже есть, но брать их отсюда нельзя по двум причинам, обе измерены на
+ * life2film 2026-10-27. Первая: под `Install` Apple кладёт и обновления (`Manual update`,
+ * `Auto-update`), и `Restore`, и `Auto-download` на второе устройство — выход 1.14 дал 151
+ * «установку» за неделю. Вторая хуже: у отчёта лишнее измерение `App Download Date`, строки
+ * мельче, и порог приватности выкидывает их целиком — 15 из 34 дневных файлов пустые, 75 первых
+ * установок за месяц против ~74 за неделю в `App Downloads Standard`. Удалений же нет нигде,
+ * кроме этого отчёта, и наш счётчик их не увидит никогда: тишина не отличает удалившего.
+ */
+export function parseInstallDeletion(tsv: string, source: string): { rows: StoreRow[]; skipped: number } {
+  return parseDaily(tsv, source, INSTALL_DELETION_REPORT, ["Event"], (cell) => {
+    const event = cell("Event");
+    if (event === "Delete") return METRICS.deletes;
+    if (event === "Install") return null;
+    return undefined;
+  });
+}
+
+/**
+ * Отчёт о загрузках → установки и переустановки. Это тот же счёт, что App Store Connect
+ * показывает как First-time downloads, поэтому числа на дашборде сходятся с их экраном.
+ *
+ * `Download Type` обязателен: без него установку не отличить от обновления, а обновлений после
+ * каждого релиза в разы больше, чем новых людей.
+ */
+export function parseDownloads(tsv: string, source: string): { rows: StoreRow[]; skipped: number } {
+  return parseDaily(tsv, source, DOWNLOADS_REPORT, ["Download Type"], (cell) => {
+    switch (cell("Download Type")) {
+      case "First-time download":
+        return METRICS.installs;
+      case "Redownload":
+        return METRICS.redownloads;
+      case "Manual update":
+      case "Auto-update":
+      case "Auto-download":
+      case "Restore":
+        return null;
+      default:
+        return undefined;
+    }
+  });
 }

@@ -46,11 +46,21 @@ Adapty) — но со столбцом «наш источник» вместо 
 |---|---|---|---|
 | Impressions | показы в сторе | App Store Connect | фаза 2 (async Analytics Reports) |
 | Product Page Views | просмотры страницы | App Store Connect | фаза 2 |
-| App Units | установки | ASC Sales report, семейство `1*` | **готово** |
-| Redownloads | переустановки | там же, семейство `3*` | **готово** |
+| App Units | первые установки | App Analytics, `App Downloads Standard`, `First-time download` — то же число, что ASC показывает как First-time downloads. Sales `1*` подключится, когда будет vendor number | **готово** |
+| Redownloads | переустановки | там же, `Redownload` | **готово** |
+| Deletes | удаления | App Analytics, `Installation and Deletion Standard`, `Delete` — единственный источник | **готово** |
 | Organic Installs | App Units − атрибутированные | вычисляемое | ждёт фазы 2 |
 | Store CVR (Imp) | App Units ÷ Impressions | вычисляемое | ждёт фазы 2 |
 | Store CVR (Page) | App Units ÷ Page Views | вычисляемое | ждёт фазы 2 |
+
+**Установки до 27.10.2026 врали дважды, и часть истории так и осталась кривой.** До этого дня
+`installs` брались из `Installation and Deletion`, и в них попадали обновления: неделя выхода
+life2film 1.14 показала 151 «установку» при 74 первых. Хуже то, что этот отчёт режет приватностью
+сильнее: у него лишнее измерение `App Download Date`, мелкие строки выпадают, и у life2film 15 из 34
+дневных файлов пустые — 75 первых установок за 37 дней против 330 в `App Downloads Standard`.
+Переписано из Apple всё, что Apple ещё отдаёт: у life2film с 2026-09-20, у starlapse с запуска. Строки
+раньше этого (life2film 2026-08-17…09-19, facealarm, photosweep, swift-terminal за август) остались
+от старого правила: занижены порогом и местами завышены обновлениями, сравнивать их с новыми нельзя.
 
 ### Деньги и подписки
 
