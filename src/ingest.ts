@@ -71,6 +71,11 @@ export function uaKind(
   if (platform !== "web") return "app";
   // Every real browser sends a user agent. Nothing that omits it is a person.
   if (userAgent === undefined || userAgent === "") return "bot";
+  // And every real browser's starts with Mozilla/ — in-app webviews included. A UA that does not
+  // is a program naming itself: Lightpanda/1.0, a headless browser for agents, runs our script and
+  // matches no word in BOT_UA, and it was 40k of airsignal.app's «people» on 10–14 Oct 2026.
+  // Checked against a week of beacon logs on every site: it was the only UA without the prefix.
+  if (!userAgent.startsWith("Mozilla/")) return "bot";
   return BOT_UA.test(userAgent) ? "bot" : "browser";
 }
 

@@ -200,6 +200,15 @@ describe("trust the edge, not the client", () => {
     ["crawler UA on web", "web", "Mozilla/5.0 (compatible; Googlebot/2.1)", "bot"],
     ["link preview fetcher", "web", "facebookexternalhit/1.1", "bot"],
     ["no UA at all on web", "web", undefined, "bot"],
+    // Measured 2026-10: 40k «people» on airsignal.app in five days were this headless browser,
+    // which names none of the words BOT_UA looks for.
+    ["a headless agent browser with its own UA", "web", "Lightpanda/1.0", "bot"],
+    [
+      "an in-app browser, which still starts with Mozilla/",
+      "web",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0",
+      "browser",
+    ],
     ["ios regardless of UA", "ios", SAFARI, "app"],
   ])("classifies %s as %s", (_label, platform, userAgent, expected) => {
     const events = accepted(

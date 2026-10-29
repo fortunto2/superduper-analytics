@@ -1,0 +1,905 @@
+{
+"what": "own_daily rows for airsignal/web before the 2026-10-28 crawl correction",
+"rows": [
+{
+"day": "2026-10-04",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1791176439008
+},
+{
+"day": "2026-10-04",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 124,
+"sampled": 1,
+"rolled": 1791176439008
+},
+{
+"day": "2026-10-04",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 573,
+"sampled": 1,
+"rolled": 1791176439008
+},
+{
+"day": "2026-10-04",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 449,
+"sampled": 1,
+"rolled": 1791176439008
+},
+{
+"day": "2026-10-04",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 444,
+"sampled": 1,
+"rolled": 1791176439008
+},
+{
+"day": "2026-10-05",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 2,
+"sampled": 1,
+"rolled": 1791262839730
+},
+{
+"day": "2026-10-05",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 142,
+"sampled": 1,
+"rolled": 1791262839730
+},
+{
+"day": "2026-10-05",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 697,
+"sampled": 1,
+"rolled": 1791262839730
+},
+{
+"day": "2026-10-05",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 553,
+"sampled": 1,
+"rolled": 1791262839730
+},
+{
+"day": "2026-10-05",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 537,
+"sampled": 1,
+"rolled": 1791262839730
+},
+{
+"day": "2026-10-06",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1791349212353
+},
+{
+"day": "2026-10-06",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 65,
+"sampled": 1,
+"rolled": 1791349212353
+},
+{
+"day": "2026-10-06",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 451,
+"sampled": 1,
+"rolled": 1791349212353
+},
+{
+"day": "2026-10-06",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 386,
+"sampled": 1,
+"rolled": 1791349212353
+},
+{
+"day": "2026-10-06",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 390,
+"sampled": 1,
+"rolled": 1791349212353
+},
+{
+"day": "2026-10-07",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 1,
+"sampled": 1,
+"rolled": 1791435661411
+},
+{
+"day": "2026-10-07",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 105,
+"sampled": 1,
+"rolled": 1791435661411
+},
+{
+"day": "2026-10-07",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 673,
+"sampled": 1,
+"rolled": 1791435661411
+},
+{
+"day": "2026-10-07",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 567,
+"sampled": 1,
+"rolled": 1791435661411
+},
+{
+"day": "2026-10-07",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 535,
+"sampled": 1,
+"rolled": 1791435661411
+},
+{
+"day": "2026-10-08",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 1,
+"sampled": 1,
+"rolled": 1791522069366
+},
+{
+"day": "2026-10-08",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 97,
+"sampled": 1,
+"rolled": 1791522069366
+},
+{
+"day": "2026-10-08",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 651,
+"sampled": 1,
+"rolled": 1791522069366
+},
+{
+"day": "2026-10-08",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 553,
+"sampled": 1,
+"rolled": 1791522069366
+},
+{
+"day": "2026-10-08",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 553,
+"sampled": 1,
+"rolled": 1791522069366
+},
+{
+"day": "2026-10-10",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1791694848341
+},
+{
+"day": "2026-10-10",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 991,
+"sampled": 1,
+"rolled": 1791694848341
+},
+{
+"day": "2026-10-10",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 3118,
+"sampled": 1,
+"rolled": 1791694848341
+},
+{
+"day": "2026-10-10",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 2127,
+"sampled": 1,
+"rolled": 1791694848341
+},
+{
+"day": "2026-10-10",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 2099,
+"sampled": 1,
+"rolled": 1791694848341
+},
+{
+"day": "2026-10-11",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1791781255428
+},
+{
+"day": "2026-10-11",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 1685,
+"sampled": 1,
+"rolled": 1791781255428
+},
+{
+"day": "2026-10-11",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 21362,
+"sampled": 1,
+"rolled": 1791781255428
+},
+{
+"day": "2026-10-11",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 19677,
+"sampled": 1,
+"rolled": 1791781255428
+},
+{
+"day": "2026-10-11",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 14982,
+"sampled": 1,
+"rolled": 1791781255428
+},
+{
+"day": "2026-10-12",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1791867643181
+},
+{
+"day": "2026-10-12",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 722,
+"sampled": 1,
+"rolled": 1791867643181
+},
+{
+"day": "2026-10-12",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 12363,
+"sampled": 1,
+"rolled": 1791867643181
+},
+{
+"day": "2026-10-12",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 11641,
+"sampled": 1,
+"rolled": 1791867643181
+},
+{
+"day": "2026-10-12",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 10255,
+"sampled": 1,
+"rolled": 1791867643181
+},
+{
+"day": "2026-10-13",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1791954020584
+},
+{
+"day": "2026-10-13",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 226,
+"sampled": 1,
+"rolled": 1791954020584
+},
+{
+"day": "2026-10-13",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 835,
+"sampled": 1,
+"rolled": 1791954020584
+},
+{
+"day": "2026-10-13",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 609,
+"sampled": 1,
+"rolled": 1791954020584
+},
+{
+"day": "2026-10-13",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 611,
+"sampled": 1,
+"rolled": 1791954020584
+},
+{
+"day": "2026-10-14",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792040418948
+},
+{
+"day": "2026-10-14",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 1295,
+"sampled": 1,
+"rolled": 1792040418948
+},
+{
+"day": "2026-10-14",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 8261,
+"sampled": 1,
+"rolled": 1792040418948
+},
+{
+"day": "2026-10-14",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 6966,
+"sampled": 1,
+"rolled": 1792040418948
+},
+{
+"day": "2026-10-14",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 6572,
+"sampled": 1,
+"rolled": 1792040418948
+},
+{
+"day": "2026-10-15",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792126818779
+},
+{
+"day": "2026-10-15",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 321,
+"sampled": 1,
+"rolled": 1792126818779
+},
+{
+"day": "2026-10-15",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 1501,
+"sampled": 1,
+"rolled": 1792126818779
+},
+{
+"day": "2026-10-15",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 1180,
+"sampled": 1,
+"rolled": 1792126818779
+},
+{
+"day": "2026-10-15",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 1171,
+"sampled": 1,
+"rolled": 1792126818779
+},
+{
+"day": "2026-10-16",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 1,
+"sampled": 1,
+"rolled": 1792213238727
+},
+{
+"day": "2026-10-16",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 188,
+"sampled": 1,
+"rolled": 1792213238727
+},
+{
+"day": "2026-10-16",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 959,
+"sampled": 1,
+"rolled": 1792213238727
+},
+{
+"day": "2026-10-16",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 770,
+"sampled": 1,
+"rolled": 1792213238727
+},
+{
+"day": "2026-10-16",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 762,
+"sampled": 1,
+"rolled": 1792213238727
+},
+{
+"day": "2026-10-17",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 1,
+"sampled": 1,
+"rolled": 1792299645386
+},
+{
+"day": "2026-10-17",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 170,
+"sampled": 1,
+"rolled": 1792299645386
+},
+{
+"day": "2026-10-17",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 651,
+"sampled": 1,
+"rolled": 1792299645386
+},
+{
+"day": "2026-10-17",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 480,
+"sampled": 1,
+"rolled": 1792299645386
+},
+{
+"day": "2026-10-17",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 478,
+"sampled": 1,
+"rolled": 1792299645386
+},
+{
+"day": "2026-10-18",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792386043268
+},
+{
+"day": "2026-10-18",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 78,
+"sampled": 1,
+"rolled": 1792386043268
+},
+{
+"day": "2026-10-18",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 336,
+"sampled": 1,
+"rolled": 1792386043268
+},
+{
+"day": "2026-10-18",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 258,
+"sampled": 1,
+"rolled": 1792386043268
+},
+{
+"day": "2026-10-18",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 256,
+"sampled": 1,
+"rolled": 1792386043268
+},
+{
+"day": "2026-10-19",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792472438777
+},
+{
+"day": "2026-10-19",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 59,
+"sampled": 1,
+"rolled": 1792472438777
+},
+{
+"day": "2026-10-19",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 249,
+"sampled": 1,
+"rolled": 1792472438777
+},
+{
+"day": "2026-10-19",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 190,
+"sampled": 1,
+"rolled": 1792472438777
+},
+{
+"day": "2026-10-19",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 190,
+"sampled": 1,
+"rolled": 1792472438777
+},
+{
+"day": "2026-10-20",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792558838850
+},
+{
+"day": "2026-10-20",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 48,
+"sampled": 1,
+"rolled": 1792558838850
+},
+{
+"day": "2026-10-20",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 189,
+"sampled": 1,
+"rolled": 1792558838850
+},
+{
+"day": "2026-10-20",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 141,
+"sampled": 1,
+"rolled": 1792558838850
+},
+{
+"day": "2026-10-20",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 140,
+"sampled": 1,
+"rolled": 1792558838850
+},
+{
+"day": "2026-10-21",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 1,
+"sampled": 1,
+"rolled": 1792645202798
+},
+{
+"day": "2026-10-21",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 23,
+"sampled": 1,
+"rolled": 1792645202798
+},
+{
+"day": "2026-10-21",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 115,
+"sampled": 1,
+"rolled": 1792645202798
+},
+{
+"day": "2026-10-21",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 91,
+"sampled": 1,
+"rolled": 1792645202798
+},
+{
+"day": "2026-10-21",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 91,
+"sampled": 1,
+"rolled": 1792645202798
+},
+{
+"day": "2026-10-22",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792731642923
+},
+{
+"day": "2026-10-22",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 25,
+"sampled": 1,
+"rolled": 1792731642923
+},
+{
+"day": "2026-10-22",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 88,
+"sampled": 1,
+"rolled": 1792731642923
+},
+{
+"day": "2026-10-22",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 63,
+"sampled": 1,
+"rolled": 1792731642923
+},
+{
+"day": "2026-10-22",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 61,
+"sampled": 1,
+"rolled": 1792731642923
+},
+{
+"day": "2026-10-23",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 0,
+"sampled": 1,
+"rolled": 1792818033268
+},
+{
+"day": "2026-10-23",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 11,
+"sampled": 1,
+"rolled": 1792818033268
+},
+{
+"day": "2026-10-23",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 57,
+"sampled": 1,
+"rolled": 1792818033268
+},
+{
+"day": "2026-10-23",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 46,
+"sampled": 1,
+"rolled": 1792818033268
+},
+{
+"day": "2026-10-23",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 46,
+"sampled": 1,
+"rolled": 1792818033268
+},
+{
+"day": "2026-10-24",
+"source": "airsignal",
+"platform": "web",
+"metric": "bot_events",
+"value": 1,
+"sampled": 1,
+"rolled": 1792904440183
+},
+{
+"day": "2026-10-24",
+"source": "airsignal",
+"platform": "web",
+"metric": "engaged",
+"value": 46,
+"sampled": 1,
+"rolled": 1792904440183
+},
+{
+"day": "2026-10-24",
+"source": "airsignal",
+"platform": "web",
+"metric": "events",
+"value": 145,
+"sampled": 1,
+"rolled": 1792904440183
+},
+{
+"day": "2026-10-24",
+"source": "airsignal",
+"platform": "web",
+"metric": "page_views",
+"value": 98,
+"sampled": 1,
+"rolled": 1792904440183
+},
+{
+"day": "2026-10-24",
+"source": "airsignal",
+"platform": "web",
+"metric": "people",
+"value": 54,
+"sampled": 1,
+"rolled": 1792904440183
+}
+]
+}
