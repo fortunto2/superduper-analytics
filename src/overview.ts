@@ -11,7 +11,7 @@ import { APPS, SITES } from "./registry.generated";
 import { readPageHistory, type PageHistoryRow } from "./rollup";
 import { LAG_DAYS, readSearch, readSearchDaily, type SearchTotal } from "./search/sync";
 import { readTotals, type StoreTotal } from "./stores/db";
-import { dayBefore, utcDay } from "./stores/schema";
+import { dayBefore, storeWindow, utcDay } from "./stores/schema";
 
 /** Сайты, на которые счётчик в принципе можно поставить. */
 const LIVE_SITES = SITES.filter((s) => !s.retired);
@@ -153,10 +153,10 @@ export async function fetchOverview(
 
   const storesPromise = (async (): Promise<StoreTotal[]> => {
     if (env.STORES === undefined) return [];
-    const to = dayBefore(utcDay(now), 1);
+    const { from, to } = storeWindow(now, days);
     // Магазины — дополнение к нашим числам, и падение D1 не должно унести весь дашборд.
     try {
-      return await readTotals(env.STORES, dayBefore(to, Math.max(1, days) - 1), to);
+      return await readTotals(env.STORES, from, to);
     } catch {
       return [];
     }

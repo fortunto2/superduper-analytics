@@ -46,7 +46,7 @@ Adapty) — но со столбцом «наш источник» вместо 
 |---|---|---|---|
 | Impressions | показы в сторе | App Store Connect | фаза 2 (async Analytics Reports) |
 | Product Page Views | просмотры страницы | App Store Connect | фаза 2 |
-| App Units | первые установки | App Analytics, `App Downloads Standard`, `First-time download` — то же число, что ASC показывает как First-time downloads. Sales `1*` подключится, когда будет vendor number | **готово** |
+| App Units | первые установки | App Analytics, `App Downloads Standard`, `First-time download` — то же число, что ASC показывает как First-time downloads. Единственный писатель: Sales `1*` пишет в тот же ключ, поэтому его установки джоб не записывает (`rowsSalesWrites`). Сверено 30.10.2026 с первыми запусками в наших событиях: life2film 137 у Apple против 145 у нас за 16–28.10, starlapse 224 против 231, разница — переустановки | **готово** |
 | Redownloads | переустановки | там же, `Redownload` | **готово** |
 | Deletes | удаления | App Analytics, `Installation and Deletion Standard`, `Delete` — единственный источник | **готово** |
 | Organic Installs | App Units − атрибутированные | вычисляемое | ждёт фазы 2 |
@@ -68,7 +68,7 @@ life2film 1.14 показала 151 «установку» при 74 первы�
 
 | Метрика | Источник | Статус |
 |---|---|---|
-| Gross / Net Revenue | ASC Sales `Developer Proceeds` | **готово** (proceeds), gross ждёт |
+| Gross / Net Revenue | ASC Sales `Developer Proceeds`: в долларах только доллары, остальные валюты отдельными метриками (`proceeds_eur`), курса в отчёте нет | **не идёт**: джоб Sales ждёт секрет `ASC_VENDOR_NUMBER`, в D1 денег нет ни одной строки |
 | MRR, ARR | ASC `SUBSCRIPTION` report | ждёт роли ключа |
 | Trial Starts, New Subscribers, Renewals, Refunds | ASC `SUBSCRIPTION_EVENT` report | ждёт роли ключа |
 | LTV, Churn Rate | вычисляемые | после подписок |
@@ -226,6 +226,17 @@ JSON разбирается. Слот нужен тем немногим, по �
 `db/corrections/2026-10-airsignal-crawl.*`. В Analytics Engine сырые строки остаются с
 `ua_kind = browser` до своего 90-го дня, то есть до января 2027: любые запросы к AE за окно с этими
 днями покажут Air Signal завышенным.
+
+**Поправка 30.10.2026: не целыми сутками, а по посетителю.** У Lightpanda есть форма: посетитель
+смотрит ровно одну глубокую страницу (`/<страна>/<город>…`, не `/crew`) без referrer. Всё остальное
+— люди: главная, `/crew`, `/map`, страны целиком. По этой форме пересчитаны 22, 24, 25 и 28 октября
+(`db/corrections/2026-10-airsignal-crawl-2.*`): удаление целыми сутками стёрло 24-го пятнадцать
+настоящих посетителей хакатона в Стэнфорде, а 25 и 28 октября свернулись до исправления ingest и
+считали краулер людьми (28-го — 38 «людей» вместо одного). Остальные дни 10–23 октября форма не
+спасает: остатки там тоже глубокие страницы из США и Сингапура, то есть тот же краулер, склеенный
+сэмплированием. Первую волну, 4–8 октября, форма не ловит вовсе — она смотрела страны целиком, —
+и эти дни остаются удалёнными. Среди людей 24–26 октября есть и сам владелец: Chrome через WARP
+(«Cloudflare London») с `ru-RU`, в событиях его не отличить.
 
 ### Конверсия страницы: что улучшать
 

@@ -85,6 +85,12 @@ export function parseSalesReport(
     const country = at(cells, "Country Code").toUpperCase();
     const units = Number(at(cells, "Units")) || 0;
     const proceeds = Number(at(cells, "Developer Proceeds")) || 0;
+    // Developer Proceeds is in the Currency of Proceeds — EUR for a euro storefront, JPY for
+    // Japan — not in dollars. This report carries no rate, so money that is not USD lands under
+    // its own metric (`proceeds_eur`) instead of being added to dollars as if it were one.
+    const currency = at(cells, "Currency of Proceeds").toLowerCase();
+    const proceedsMetric =
+      currency === "usd" ? METRICS.proceeds_usd : `proceeds_${currency || "unknown"}`;
 
     const add = (m: string, value: number) => {
       if (value === 0) return;
@@ -109,10 +115,21 @@ export function parseSalesReport(
     // Proceeds are per unit in this report, so the line total is price × units. Recorded against
     // the day and country rather than the product type: "what did this app earn" is the question,
     // and splitting it by device class answers one nobody asks.
-    if (proceeds !== 0) add(METRICS.proceeds_usd, proceeds * units);
+    if (proceeds !== 0) add(proceedsMetric, proceeds * units);
   }
 
   return { rows: [...totals.values()], skipped };
+}
+
+/**
+ * Installs and re-downloads have ONE writer, and it is App Analytics (`App Downloads Standard`,
+ * see sync.ts). This report lands them on the same key — day, app, `appstore`, metric, country —
+ * and both jobs run in the same cron, so with two writers a row would hold whichever finished
+ * last. The parser still classifies them (its tests pin what Apple's codes mean); the sync writes
+ * only the rest: money, in-app units, updates.
+ */
+export function rowsSalesWrites(rows: StoreRow[]): StoreRow[] {
+  return rows.filter((r) => r.metric !== METRICS.installs && r.metric !== METRICS.redownloads);
 }
 
 /**

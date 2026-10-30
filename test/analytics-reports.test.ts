@@ -8,7 +8,7 @@
  * переустанавливают.
  */
 import { describe, expect, it } from "vitest";
-import { parseDownloads, parseInstallDeletion } from "../src/stores/analytics-reports";
+import { appleError, parseDownloads, parseInstallDeletion } from "../src/stores/analytics-reports";
 
 const HEADER =
   "Date\tApp Name\tApp Apple Identifier\tEvent\tDownload Type\tApp Version\tDevice\t" +
@@ -157,5 +157,24 @@ describe("parseDownloads", () => {
 
   it("падает без колонки типа: без неё установку не отличить от обновления", () => {
     expect(() => parseDownloads("Date\tTerritory\tCounts\n2026-10-21\tUS\t5", "life2film")).toThrow();
+  });
+});
+
+describe("appleError", () => {
+  it("сводит ответ Apple к коду и заголовку — сырой ответ съедал заметки всех приложений", () => {
+    // Форма живого ответа 30.10.2026 на приложение чужой команды.
+    const body = JSON.stringify(
+      { errors: [{ id: "71760a24", status: "403", code: "FORBIDDEN_ERROR",
+        title: "This request is forbidden for security reasons", detail: "The API key in use does not allow this request" }] },
+      null, 2,
+    );
+    expect(appleError(body)).toBe("FORBIDDEN_ERROR: This request is forbidden for security reasons");
+  });
+
+  it("не-JSON отдаёт одной короткой строкой", () => {
+    expect(appleError("<html>\n  <body>502 Bad Gateway</body>\n</html>")).toBe(
+      "<html> <body>502 Bad Gateway</body> </html>",
+    );
+    expect(appleError("x".repeat(500))).toHaveLength(120);
   });
 });

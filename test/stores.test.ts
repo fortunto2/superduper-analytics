@@ -9,9 +9,9 @@ import schemaSql from "../db/schema.sql?raw";
 import { findSilent, readOwnHistory } from "../src/rollup";
 import { RETENTION_DAYS } from "../src/schema";
 import { buildPagesQuery, buildQuery } from "../src/stats";
-import { parseSalesReport } from "../src/stores/appstore";
+import { parseSalesReport, rowsSalesWrites } from "../src/stores/appstore";
 import { readCampaigns, readTotals, readSync, writeRows, writeSync } from "../src/stores/db";
-import { dayBefore, daysBetween, utcDay, type StoreRow } from "../src/stores/schema";
+import { dayBefore, daysBetween, storeWindow, utcDay, type StoreRow } from "../src/stores/schema";
 
 /** The real header, in Apple's order, so a positional reader would pass and a named one earns it. */
 const HEADER = [
@@ -154,6 +154,38 @@ describe("reading Apple's sales report", () => {
     expect(parseSalesReport("", SOURCES).rows).toEqual([]);
     expect(parseSalesReport(HEADER, SOURCES).rows).toEqual([]);
   });
+
+  it("never adds euros or yen to dollars — Developer Proceeds is in the currency of proceeds", () => {
+    const { rows } = parseSalesReport(
+      report(
+        line({ "Product Type Identifier": "IA1", Units: "1", "Developer Proceeds": "2.1" }),
+        line({ "Product Type Identifier": "IA1", Units: "2", "Developer Proceeds": "1.9",
+          "Country Code": "DE", "Currency of Proceeds": "EUR" }),
+        line({ "Product Type Identifier": "IA1", Units: "1", "Developer Proceeds": "450",
+          "Country Code": "JP", "Currency of Proceeds": "JPY" }),
+      ),
+      SOURCES,
+    );
+    const money = Object.fromEntries(
+      rows.filter((r) => r.metric.startsWith("proceeds_")).map((r) => [r.metric, r.value]),
+    );
+    expect(money).toEqual({ proceeds_usd: 2.1, proceeds_eur: 3.8, proceeds_jpy: 450 });
+  });
+
+  it("leaves installs and re-downloads to App Analytics, their one writer", () => {
+    const { rows } = parseSalesReport(
+      report(
+        line({ "Product Type Identifier": "1F", Units: "4" }),
+        line({ "Product Type Identifier": "3F", Units: "1" }),
+        line({ "Product Type Identifier": "7F", Units: "9" }),
+        line({ "Product Type Identifier": "IA1", Units: "1", "Developer Proceeds": "2.1" }),
+      ),
+      SOURCES,
+    );
+    expect(rowsSalesWrites(rows).map((r) => r.metric).sort()).toEqual([
+      "proceeds_usd", "units", "updates",
+    ]);
+  });
 });
 
 describe("UTC day arithmetic", () => {
@@ -172,6 +204,18 @@ describe("UTC day arithmetic", () => {
     ]);
     expect(daysBetween("2026-08-03", "2026-08-01")).toEqual([]);
     expect(daysBetween("2020-01-01", "2026-08-01").length).toBeLessThanOrEqual(400);
+  });
+
+  it("ends the store window on the last day Apple has delivered, not yesterday", () => {
+    // Наблюдение 30.10.2026: после крона в 05:00 UTC последний записанный день — 28.10.
+    expect(storeWindow(Date.parse("2026-10-30T06:00:00Z"), 7)).toEqual({
+      from: "2026-10-22",
+      to: "2026-10-28",
+    });
+    expect(storeWindow(Date.parse("2026-10-30T06:00:00Z"), 0)).toEqual({
+      from: "2026-10-28",
+      to: "2026-10-28",
+    });
   });
 });
 

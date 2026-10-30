@@ -30,7 +30,7 @@ import { rollupDay, rollupPages } from "./rollup";
 import { syncSearchConsole } from "./search/sync";
 import { GA_CRON, syncGoogleAnalytics } from "./ga/sync";
 import { readCampaigns, readTotals } from "./stores/db";
-import { dayBefore, utcDay } from "./stores/schema";
+import { storeWindow } from "./stores/schema";
 import { syncAppStore, syncStoreAnalytics } from "./stores/sync";
 
 /**
@@ -448,8 +448,7 @@ app.get("/v1/conversion", async (c) => {
  */
 app.get("/v1/stores", async (c) => {
   const days = Number(c.req.query("days") ?? DEFAULT_WINDOW_DAYS);
-  const to = dayBefore(utcDay(Date.now()), 1);
-  const from = dayBefore(to, Math.max(1, days) - 1);
+  const { from, to } = storeWindow(Date.now(), days);
   const [totals, campaigns] = await Promise.all([
     readTotals(c.env.STORES, from, to),
     readCampaigns(c.env.STORES, from, to),

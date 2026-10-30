@@ -37,7 +37,11 @@ export const METRICS = {
    */
   deletes: "deletes",
   updates: "updates",
-  /** Money, in the store's reporting currency converted to USD by the store itself. */
+  /**
+   * Money in US dollars. Apple's sales report pays out in the storefront's currency and gives no
+   * rate, so other currencies are written as `proceeds_eur`, `proceeds_jpy` and so on — free-text
+   * metrics, never folded into this one.
+   */
   proceeds_usd: "proceeds_usd",
   /** Units sold, which for a free app with IAP is not the same as installs. */
   units: "units",
@@ -78,6 +82,20 @@ export function utcDay(ms: number): string {
 /** The day `n` days before `day`, staying in UTC. */
 export function dayBefore(day: string, n: number): string {
   return utcDay(Date.parse(`${day}T00:00:00Z`) - n * 86_400_000);
+}
+
+/**
+ * Насколько отстают отчёты магазина от сегодняшнего дня. App Analytics кладёт день D в инстанс
+ * за D+1, а крон забирает его в 05:00 UTC D+2: утром 30.10 последний записанный день — 28.10.
+ * Окно, кончающееся вчера, показывало «7 дней» установок, в которых шесть дней данных, рядом
+ * с семью днями визитов, и воронка выходила на седьмую часть хуже правды.
+ */
+export const STORE_LAG_DAYS = 2;
+
+/** `days` суток магазинных данных, кончающиеся последним днём, который магазин уже отдал. */
+export function storeWindow(now: number, days: number): { from: string; to: string } {
+  const to = dayBefore(utcDay(now), STORE_LAG_DAYS);
+  return { from: dayBefore(to, Math.max(1, days) - 1), to };
 }
 
 /** Every day from `from` to `to` inclusive. Empty if `from` is after `to`, never infinite. */

@@ -32,12 +32,28 @@ const ACCESS_TYPE = "ONGOING";
 
 type Json = Record<string, unknown>;
 
+/**
+ * Apple's error body in one line: `FORBIDDEN_ERROR: This request is forbidden…`. The raw body is
+ * pretty-printed JSON whose first two hundred characters are braces and an id, and the job keeps
+ * five hundred characters of notes for all apps together: one app on another team's account
+ * filled them every morning, and any other app's failure was cut off behind it.
+ */
+export function appleError(body: string): string {
+  try {
+    const first = (JSON.parse(body) as { errors?: { code?: string; title?: string }[] }).errors?.[0];
+    if (first?.code !== undefined) return `${first.code}: ${first.title ?? ""}`.trim();
+  } catch {
+    // Not JSON — an HTML error page or a truncated body. Fall through to the plain text.
+  }
+  return body.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
 async function ascGet(token: string, path: string): Promise<Json> {
   const response = await fetch(`${ASC_API}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
-    throw new Error(`ASC ${path}: ${response.status} ${(await response.text()).slice(0, 200)}`);
+    throw new Error(`ASC ${path}: ${response.status} ${appleError(await response.text())}`);
   }
   return (await response.json()) as Json;
 }
@@ -75,7 +91,7 @@ export async function findOrCreateRequest(token: string, appId: string): Promise
     }),
   });
   if (!response.ok) {
-    throw new Error(`create report request for ${appId}: ${response.status} ${(await response.text()).slice(0, 200)}`);
+    throw new Error(`create report request for ${appId}: ${response.status} ${appleError(await response.text())}`);
   }
   const body = (await response.json()) as Json;
   const id = (body.data as Json | undefined)?.id;

@@ -5,7 +5,7 @@
  * observed by waiting until tomorrow is a job nobody can debug.
  */
 import { APPS } from "../registry.generated";
-import { ascToken, fetchSalesReport, parseSalesReport } from "./appstore";
+import { ascToken, fetchSalesReport, parseSalesReport, rowsSalesWrites } from "./appstore";
 import {
   DOWNLOADS_REPORT,
   fetchSegment,
@@ -105,7 +105,7 @@ export async function syncAppStore(
     // watermark still advances — otherwise a quiet week would make the job re-ask forever.
     if (tsv !== null) {
       const parsed = parseSalesReport(tsv, storeIdToSource);
-      rows += await writeRows(env.STORES, parsed.rows, now);
+      rows += await writeRows(env.STORES, rowsSalesWrites(parsed.rows), now);
       skipped += parsed.skipped;
     }
     lastGood = day;
