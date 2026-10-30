@@ -1,0 +1,461 @@
+[
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/",
+  "provider": "own",
+  "page_views": 3,
+  "engaged": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/brazil/maragogi",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/brazil/sao-jose-da-coroa-grande",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/crew",
+  "provider": "own",
+  "page_views": 5,
+  "engaged": 4,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/germany/radeburg",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/india/puttalam",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/india/tamarakutamkudiyiruppu",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/india/terur",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/kuwait",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/map",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/russia/omsk",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "path": "/united-states/south-berwick",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/brazil/abreu-e-lima",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/brazil/igarassu",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/brazil/igreja-nova",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/brazil/porto-calvo",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/bannewitz",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/eschwege",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/freital/station-19617",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/freital/station-4023",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/freital/station-75599",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/freital/station-76131",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/friedrichstadt-2",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/kalawa",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/lubin",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/ottendorf-okrilla",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/radebeul/station-36353",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/radebeul/station-76731",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/germany/rotenburg-an-der-fulda",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/alagapuram",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/ambikapuram",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/chinna-salem",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/dowleswaram",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/hukumpeta",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/koonimedu",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/kumarapuram-2",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/marutharod",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/palakollu",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/peruvila",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/puthuppariyaram",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/puttantura",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/quepem",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/rajamahendravaram",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/razole",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/sanvordem",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/india/tengampudur",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/russia/gorodets",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/solomon-islands",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/solomon-islands/auki",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/united-states/hudson-5",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "path": "/united-states/lebanon-6",
+  "provider": "own",
+  "page_views": 1,
+  "engaged": 0,
+  "rolled": 1793250021390
+ }
+]

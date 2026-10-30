@@ -1,0 +1,128 @@
+[
+ {
+  "day": "2026-10-22",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "bot_events",
+  "value": 88,
+  "sampled": 1,
+  "rolled": 1792731642923
+ },
+ {
+  "day": "2026-10-22",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "events",
+  "value": 88,
+  "sampled": 1,
+  "rolled": 1792731642923
+ },
+ {
+  "day": "2026-10-24",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "bot_events",
+  "value": 145,
+  "sampled": 1,
+  "rolled": 1792904440183
+ },
+ {
+  "day": "2026-10-24",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "events",
+  "value": 145,
+  "sampled": 1,
+  "rolled": 1792904440183
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "bot_events",
+  "value": 1,
+  "sampled": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "engaged",
+  "value": 10,
+  "sampled": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "events",
+  "value": 29,
+  "sampled": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "page_views",
+  "value": 18,
+  "sampled": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-25",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "people",
+  "value": 15,
+  "sampled": 1,
+  "rolled": 1792990826170
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "bot_events",
+  "value": 0,
+  "sampled": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "engaged",
+  "value": 18,
+  "sampled": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "events",
+  "value": 57,
+  "sampled": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "page_views",
+  "value": 39,
+  "sampled": 1,
+  "rolled": 1793250021390
+ },
+ {
+  "day": "2026-10-28",
+  "source": "airsignal",
+  "platform": "web",
+  "metric": "people",
+  "value": 38,
+  "sampled": 1,
+  "rolled": 1793250021390
+ }
+]
