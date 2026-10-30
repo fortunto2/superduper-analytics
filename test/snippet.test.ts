@@ -41,16 +41,23 @@ describe("the snippet as shipped", () => {
     expect(bytes).toBeLessThan(1400);
   });
 
-  it("stays under 2.5 KB raw, so nothing careless creeps in under cover of compression", () => {
-    expect(new TextEncoder().encode(SNIPPET).length).toBeLessThan(2560);
+  // 2.5 → 2.75 KB on 30.10.2026 for `?sda=off`, the owner's opt-out (~105 raw bytes). Raised
+  // deliberately: brotli, the budget a visitor pays, stayed under its 1200 in `make check`.
+  it("stays under 2.75 KB raw, so nothing careless creeps in under cover of compression", () => {
+    expect(new TextEncoder().encode(SNIPPET).length).toBeLessThan(2816);
   });
 
   it("is syntactically valid — it is a string, so nothing else would catch a typo", () => {
     expect(() => new Function(SNIPPET)).not.toThrow();
   });
 
-  it("touches no client-side storage, which is what keeps the consent banner away", () => {
-    expect(SNIPPET).not.toMatch(/localStorage|sessionStorage|document\.cookie|indexedDB/);
+  // Было «не трогает хранилище вовсе». С 30.10.2026 обещание уже: одна запись, `sda_off`, и только
+  // по явной просьбе посетителя (`?sda=off`) — согласия такая запись не требует. Что обычный визит
+  // ничего не пишет, проверяется ниже исполнением, а не регэкспом.
+  it("knows one storage key, sda_off, and no cookie or other store — the consent banner stays away", () => {
+    expect(SNIPPET).not.toMatch(/sessionStorage|document\.cookie|indexedDB/);
+    expect(SNIPPET.match(/localStorage/g)).toHaveLength(1);
+    expect(SNIPPET.match(/"sda_[a-z]+"/g)?.every((k) => k === '"sda_off"')).toBe(true);
   });
 
   it("sends text/plain, so the browser needs no CORS preflight", () => {
@@ -76,8 +83,18 @@ describe("the snippet as shipped", () => {
 /** Minimal DOM: enough for the snippet to believe it is on a page. */
 function run(
   source: string | undefined,
-  opts: { viaCurrentScript?: boolean; webdriver?: boolean; ua?: string; search?: string } = {},
+  opts: {
+    viaCurrentScript?: boolean;
+    webdriver?: boolean;
+    ua?: string;
+    search?: string;
+    /** The site's localStorage, shared between runs to model a return visit; `null` refuses access. */
+    storage?: Map<string, string> | null;
+  } = {},
 ) {
+  const store = opts.storage === undefined ? new Map<string, string>() : opts.storage;
+  const writes: string[] = [];
+  const alerts: string[] = [];
   const viaCurrentScript = opts.viaCurrentScript !== false;
   const sent: unknown[] = [];
   const listeners: Record<string, ((e?: unknown) => void)[]> = {};
@@ -123,6 +140,24 @@ function run(
     Array,
     URLSearchParams,
     fetch: () => undefined,
+    // A browser that blocks storage throws on use (Safari private mode, a sandboxed frame).
+    localStorage: {
+      getItem: (k: string) => {
+        if (store === null) throw new Error("SecurityError");
+        return store.get(k) ?? null;
+      },
+      setItem: (k: string, v: string) => {
+        if (store === null) throw new Error("SecurityError");
+        writes.push(`set ${k}`);
+        store.set(k, String(v));
+      },
+      removeItem: (k: string) => {
+        if (store === null) throw new Error("SecurityError");
+        writes.push(`remove ${k}`);
+        store.delete(k);
+      },
+    },
+    alert: (m: string) => alerts.push(m),
   };
 
   // eslint-disable-line no-new-func -- the point of the test is to execute the shipped text
@@ -145,7 +180,7 @@ function run(
   };
   /** A click on `el`, which may be nested inside the element carrying the attribute. */
   const click = (el: unknown) => fire("click", { target: el });
-  return { sda, sent, hide, win, fire, click };
+  return { sda, sent, hide, win, fire, click, writes, alerts };
 }
 
 describe("the snippet running", () => {
@@ -258,6 +293,53 @@ function el(dataset: Record<string, string> | null, parent?: unknown): unknown {
   };
   return node;
 }
+
+describe("the owner asking not to be counted", () => {
+  const events = (r: { sent: unknown[] }) =>
+    (r.sent[0] as { events: Record<string, unknown>[] } | undefined)?.events ?? [];
+
+  it("?sda=off marks this browser on this site, says so, and its events go out as automation", () => {
+    const storage = new Map<string, string>();
+    const r = run("airsignal", { search: "?sda=off", storage });
+    r.hide();
+    expect(storage.get("sda_off")).toBe("1");
+    expect(r.alerts).toEqual(["sda off: example.com"]);
+    expect(events(r)[0]?.auto).toBe(true);
+  });
+
+  it("keeps it on the next visit, without the parameter and without asking again", () => {
+    const storage = new Map([["sda_off", "1"]]);
+    const r = run("airsignal", { storage });
+    r.hide();
+    expect(events(r)[0]?.auto).toBe(true);
+    expect(r.writes).toEqual([]);
+    expect(r.alerts).toEqual([]);
+  });
+
+  it("?sda=on takes it back", () => {
+    const storage = new Map([["sda_off", "1"]]);
+    const r = run("airsignal", { search: "?sda=on", storage });
+    r.hide();
+    expect(storage.has("sda_off")).toBe(false);
+    expect(r.alerts).toEqual(["sda on: example.com"]);
+    expect(events(r)[0]).not.toHaveProperty("auto");
+  });
+
+  it("writes nothing for an ordinary visitor — including one with some other ?sda value", () => {
+    for (const search of ["", "?utm_source=x", "?sda=1"]) {
+      const r = run("airsignal", { search });
+      expect(r.writes).toEqual([]);
+      expect(r.alerts).toEqual([]);
+    }
+  });
+
+  it("still counts a browser that refuses storage, instead of going silent", () => {
+    const r = run("airsignal", { storage: null });
+    r.hide();
+    expect(events(r)[0]?.name).toBe("page_viewed");
+    expect(events(r)[0]).not.toHaveProperty("auto");
+  });
+});
 
 describe("clicks marked up in HTML", () => {
   const events = (r: { sent: unknown[] }) =>

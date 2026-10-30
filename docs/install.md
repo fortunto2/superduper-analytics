@@ -132,3 +132,11 @@ curl -s "https://analytics.superduperai.co/v1/stats?days=1" | jq '.sources'
 
 Cloudflare's own edge analytics already knows how much traffic each site really gets, so the
 honest test is the ratio between the two — see the coverage panel in the dashboard.
+
+## Not counting yourself
+
+Open any page of a site with `?sda=off` once per browser: the site says "sda off", stores one
+key (`sda_off`) in its own localStorage, and from then on that browser's events go out as
+automation — the bots column, never people. `?sda=on` undoes it. Nothing is written for a visitor
+who did not ask, so the privacy text stays true. `/dashboard/me` lists the link for every live
+site in the registry; the flag is per site and per browser, so it is one click on each.

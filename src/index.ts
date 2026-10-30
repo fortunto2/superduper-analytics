@@ -19,6 +19,7 @@ import { ingest } from "./ingest";
 import { isRegisteredOrigin } from "./registry";
 import { buildOpenReport, OPEN_CACHE_SECONDS, OPEN_PAGE, OPEN_PAGE_CACHE_SECONDS } from "./open";
 import { handleMcp } from "./mcp";
+import { optOutPage } from "./me";
 import { fetchOverview } from "./overview";
 import { writeEvents } from "./sinks/analytics-engine";
 import { fetchMetric, fetchStats } from "./stats";
@@ -136,6 +137,12 @@ app.use("/dashboard", async (c, next) => {
   await next();
 });
 
+// Hono's "/dashboard" matches that path only; the pages under it need the same door.
+app.use("/dashboard/*", async (c, next) => {
+  if (!(await permitted(c))) return c.text("not found", 404);
+  await next();
+});
+
 /**
  * The analytics as tools an agent can call. Outside the /v1/* middleware because MCP carries
  * its own auth convention — a bearer token and a 401 with WWW-Authenticate — which is what an
@@ -192,6 +199,13 @@ app.get("/dashboard", (c) => {
   c.header("content-type", "text/html; charset=utf-8");
   c.header("cache-control", "private, no-store");
   return c.body(DASHBOARD);
+});
+
+/** Links that stop counting the owner, one per site. Under /dashboard so Access guards it too. */
+app.get("/dashboard/me", (c) => {
+  c.header("content-type", "text/html; charset=utf-8");
+  c.header("cache-control", "private, no-store");
+  return c.body(optOutPage());
 });
 
 /** The old address, kept working: it is in bookmarks and in half this repository's docs. */

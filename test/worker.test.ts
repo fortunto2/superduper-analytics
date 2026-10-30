@@ -169,6 +169,19 @@ describe("the private side lives under its own prefix", () => {
     expect((await SELF.fetch("https://analytics.example/dashboard")).status).toBe(404);
   });
 
+  it("guards the pages under /dashboard too — Hono's /dashboard matches that path alone", async () => {
+    expect((await SELF.fetch("https://analytics.example/dashboard/me")).status).toBe(404);
+  });
+
+  it("lists an opt-out link for every live site and none for a retired one", async () => {
+    const res = await SELF.fetch(`https://analytics.example/dashboard/me?k=${env.DASHBOARD_KEY}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('href="https://airsignal.app/?sda=off"');
+    expect(html).toContain('href="https://airsignal.app/?sda=on"');
+    expect(html).not.toContain("editor.superduperai.co");
+  });
+
   // The reason the move happened at all: an Access application on the bare hostname would
   // cover these two, and every counter on every site would get a login page instead of a 204.
   it("leaves ingest and the snippet outside the protected prefix", async () => {

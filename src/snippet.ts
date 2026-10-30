@@ -18,6 +18,13 @@
  * the edge from IP + user agent + the UTC date (see anon.ts), so the browser is handed nothing
  * to keep and no consent banner becomes necessary. The snippet never even mentions `anon`.
  *
+ * One exception, and only the visitor can make it: opening any page with `?sda=off` stores
+ * `sda_off` in that site's localStorage, and from then on this browser's events go out as
+ * `auto` — bots, not people, still visible when checking that the counter works. `?sda=on`
+ * removes it. It exists for the owner, whose own visits were half of a small site's «people»
+ * (airsignal.app, 24 Oct 2026). Storage the visitor explicitly asked for needs no consent; an
+ * ordinary visit only READS the key, and writes nothing.
+ *
  * NO CORS PREFLIGHT. The body goes as `text/plain` inside a Blob, which makes it a "simple
  * request" that browsers send without an OPTIONS round trip. Ingest accepts text/plain for
  * exactly this reason. A JSON content-type would double the request count and force an
@@ -80,7 +87,7 @@
 
 /** Bumped when the served snippet changes. It is the ETag, so a stale browser revalidates
  * with a 304 instead of downloading the string again — see the /sda.js route. */
-export const SNIPPET_VERSION = "4";
+export const SNIPPET_VERSION = "5";
 
 /** An hour: long enough to be free in practice, short enough that a fix lands the same day. */
 export const SNIPPET_CACHE_SECONDS = 3600;
@@ -98,9 +105,11 @@ var ver=(s&&s.dataset.version)||undefined;
 var buf=[],timer,queued=w.sda&&w.sda.q,engaged;
 var FILES=/[.](pdf|zip|dmg|exe|pkg|apk)$/i;
 var nav=navigator,ua=nav.userAgent||"";
-var auto=!!(nav.webdriver||/HeadlessChrome|PhantomJS|Electron/i.test(ua))||undefined;
+var q=new URLSearchParams(location.search),x=q.get("sda"),me;
+try{var ls=localStorage;if(x=="off"||x=="on"){ls[x=="on"?"removeItem":"setItem"]("sda_off",1);alert("sda "+x+": "+location.host)}me=ls.getItem("sda_off")}catch(e){}
+var auto=!!(me||nav.webdriver||/HeadlessChrome|PhantomJS|Electron/i.test(ua))||undefined;
 function path(){return location.pathname||"/"}
-var utm=function(){var q=new URLSearchParams(location.search),o={},n;
+var utm=function(){var o={},n;
 ["source","medium","campaign"].forEach(function(k){var v=q.get("utm_"+k);if(v){o[k]=v.slice(0,64);n=1}});
 return n?o:undefined}();
 function ref(){var r=d.referrer;return r&&r.indexOf(location.host)<0?r:undefined}
