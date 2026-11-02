@@ -108,6 +108,7 @@ Analytics.configure(source: "life2film", automated: true)   // #if DEBUG
 | `editor` | https://editor.superduperai.co |
 | `rustman` | https://rustman.org |
 | `akbuzat` | https://akbuzat.net |
+| `pocketmap` | https://fortunto2.github.io/pocketmap-site |
 
 ## There is nothing to keep updated
 

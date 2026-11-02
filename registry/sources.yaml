@@ -86,6 +86,13 @@ sites:
   - id: turtle-careta
     name: Caretta Gazipaşa
     url: https://carettafriends.com
+  # Офлайн-карты для iPhone: лендинг, политика конфиденциальности, поддержка на GitHub Pages.
+  # Origin сверяется по хосту, а `fortunto2.github.io` общий для всех Pages-сайтов аккаунта —
+  # тег, вставленный в соседний репозиторий, засчитается сюда. Когда появится свой домен,
+  # меняется только `url`, как у visaphoto: `id` партиционирует архив.
+  - id: pocketmap
+    name: PocketMap
+    url: https://fortunto2.github.io/pocketmap-site
 
 # Apple `app_id` is the App Store Connect numeric id — handy for joining store analytics later.
 apps:
@@ -170,6 +177,13 @@ apps:
     bundle_id: co.superduperai.airsignal
     app_id: "6826939471"
     site: airsignal
+  # Зарегистрировано, но НЕ подключено: ярлык App Privacy у приложения — Data Not Collected,
+  # и SDK появится только вместе со сменой ярлыка и политики. Строка здесь лишь резервирует id,
+  # чтобы сайт и приложение были одной воронкой. `app_id` впишется, когда будет в App Store.
+  - id: pocketmap
+    platform: ios
+    bundle_id: co.superduperai.pocketmap
+    site: pocketmap
 
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
 #
