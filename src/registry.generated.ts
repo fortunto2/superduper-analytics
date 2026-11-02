@@ -75,7 +75,7 @@ export const APPS = [
   { id: "life2film", platform: "ios", storeId: "6761656888", site: "life2film" },
   { id: "live2play", platform: "ios", storeId: "6794370589", site: "live2play" },
   { id: "photosweep", platform: "ios", storeId: "6794369239", site: null },
-  { id: "pocketmap", platform: "ios", storeId: "", site: "pocketmap" },
+  { id: "pocketmap", platform: "ios", storeId: "6829529271", site: "pocketmap" },
   { id: "receiptbrain", platform: "ios", storeId: "6759008528", site: null },
   { id: "starlapse", platform: "ios", storeId: "6801191027", site: null },
   { id: "superfinans", platform: "ios", storeId: "6759007613", site: null },
