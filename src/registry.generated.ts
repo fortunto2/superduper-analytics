@@ -29,9 +29,11 @@ export const SOURCE_IDS = [
   "receiptbrain",
   "rustman",
   "rusty",
+  "specbridge",
   "starlapse",
   "superduperai",
   "superfinans",
+  "supervox",
   "swift-terminal",
   "turtle-careta",
   "visaphoto",
@@ -42,7 +44,7 @@ export const SOURCE_IDS = [
 export const SITES = [
   { id: "agentboard", name: "agentboard", host: "board.rustman.org", url: "https://board.rustman.org", open: true, retired: false, ga: "" },
   { id: "airsignal", name: "Air Signal", host: "airsignal.app", url: "https://airsignal.app", open: true, retired: false, ga: "" },
-  { id: "akbuzat", name: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false, retired: false, ga: "" },
+  { id: "akbuzat", name: "akbuzat", host: "akbuzat.net", url: "https://akbuzat.net", open: false, retired: true, ga: "" },
   { id: "books", name: "books", host: "books.superduperai.co", url: "https://books.superduperai.co", open: false, retired: false, ga: "" },
   { id: "carettafriends", name: "Caretta Friends", host: "app.carettafriends.com", url: "https://app.carettafriends.com", open: false, retired: false, ga: "" },
   { id: "editor", name: "editor", host: "editor.superduperai.co", url: "https://editor.superduperai.co", open: false, retired: true, ga: "" },
@@ -77,8 +79,10 @@ export const APPS = [
   { id: "photosweep", platform: "ios", storeId: "6794369239", site: null },
   { id: "pocketmap", platform: "ios", storeId: "6829529271", site: "pocketmap" },
   { id: "receiptbrain", platform: "ios", storeId: "6759008528", site: null },
+  { id: "specbridge", platform: "ios", storeId: "", site: null },
   { id: "starlapse", platform: "ios", storeId: "6801191027", site: null },
   { id: "superfinans", platform: "ios", storeId: "6759007613", site: null },
+  { id: "supervox", platform: "macos", storeId: "", site: null },
   { id: "swift-terminal", platform: "ios", storeId: "6758515520", site: null },
 ] as const;
 

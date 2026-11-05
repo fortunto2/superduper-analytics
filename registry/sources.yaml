@@ -72,8 +72,11 @@ sites:
     public: true
   - id: rustman
     url: https://rustman.org
+  # Закрыт Cloudflare Access 4 ноября 2026 (зона akbuzat.net и *.akbuzat.net): публичных
+  # посетителей нет, а недельный трафик до этого был сканерами. Счётчик не ставили.
   - id: akbuzat
     url: https://akbuzat.net
+    retired: true
   # Тот же id, что у приложения ниже — один продукт, одна воронка, как у live2play.
   # `id` постоянен: он партиционирует архив.
   - id: carettafriends
@@ -184,6 +187,16 @@ apps:
     bundle_id: co.superduperai.pocketmap
     app_id: "6829529271"
     site: pocketmap
+  # Зарегистрированы 4 ноября 2026 ради существования источника; клиента в них НЕТ намеренно.
+  # specbridge ставится на телефон автора из личного форка (dev-профиль, форк не пушился),
+  # supervox это локальный TUI с обещанием «ничего не уходит в облако». Событий не ждать;
+  # клиент добавляется, когда появится дистрибуция.
+  - id: specbridge
+    platform: ios
+    bundle_id: co.superduperai.specbridge
+  - id: supervox
+    platform: macos
+    bundle_id: co.superduperai.supervox
 
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
 #
