@@ -59,6 +59,20 @@ describe("does the data lie", () => {
     expect(truthFindings(input)).toMatchObject([{ rule: "sync-stuck", subject: "appstore-analytics live2play" }]);
   });
 
+  it("does not call it stuck when Apple publishes the app's other report (live2play, 5 Nov 2026)", () => {
+    const input = {
+      ...clean,
+      syncs: [
+        { provider: "appstore-analytics", source: "live2play", through: "2026-10-08", ran: "2026-11-04", note: "" },
+        { provider: "appstore-downloads", source: "live2play", through: "2026-11-03", ran: "2026-11-04", note: "" },
+      ],
+    };
+    expect(rules(input)).toEqual([]);
+    // A current report for ANOTHER app proves nothing about this one.
+    const other = { ...input, syncs: [input.syncs[0]!, { ...input.syncs[1]!, source: "life2film" }] };
+    expect(rules(other)).toEqual(["sync-stuck"]);
+  });
+
   it("flags our counter and GA4 apart by more than a factor of two, and only then", () => {
     const at = (own: number, ga4: number) => rules({
       ...clean,

@@ -81,9 +81,21 @@ export function truthFindings(input: TruthInput): Finding[] {
 
   // sync-stuck: the job ran today and the data did not move. A failure that writes nothing
   // looks exactly like a quiet day everywhere downstream.
+  //
+  // Unless a sibling moved: both App Store passes share one token and one report request per
+  // app, so a failure that writes nothing would stop both. When one report for the app is
+  // current and the other is not, Apple stopped publishing that report (live2play, 5 Nov 2026:
+  // Installation and Deletion has no instance after 8 Oct at ~1 install a day, Downloads has
+  // one every day). Calling that stuck would make the check red every day, and a sensor that
+  // always fires is ignored. A pass that breaks on its own leaves an error note: sync-error.
+  const family = (provider: string) => provider.split("-")[0];
+  const reached = new Set(
+    recent.filter((s) => daysBetween(s.through, input.today) <= STUCK_DAYS).map((s) => `${family(s.provider)} ${s.source}`),
+  );
   for (const s of recent) {
     const behind = daysBetween(s.through, input.today);
     if (behind <= STUCK_DAYS) continue;
+    if (reached.has(`${family(s.provider)} ${s.source}`)) continue;
     out.push({
       rule: "sync-stuck",
       subject: `${s.provider} ${s.source}`,
