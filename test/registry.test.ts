@@ -87,6 +87,7 @@ describe("a site that was switched off", () => {
     const editor = SITES.find((s) => s.id === "editor");
     expect(editor?.retired).toBe(true);
     // Everything else must stay live — a stray flag here silently shrinks the denominator.
-    expect(SITES.filter((s) => s.retired).map((s) => s.id)).toEqual(["editor"]);
+    // akbuzat: closed behind Cloudflare Access on 4 Nov 2026, see the registry comment.
+    expect(SITES.filter((s) => s.retired).map((s) => s.id)).toEqual(["akbuzat", "editor"]);
   });
 });

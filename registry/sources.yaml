@@ -137,10 +137,6 @@ apps:
     platform: ios
     bundle_id: co.superduperai.jawharpsynth
     app_id: "6758465213"
-  - id: driveandblock
-    platform: ios
-    bundle_id: app.driveandblock
-    app_id: "6759738953"
   - id: receiptbrain
     platform: ios
     bundle_id: co.superduperai.ReceiptBrain
