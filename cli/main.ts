@@ -7,14 +7,18 @@
  *                                           file has not drifted from it
  *   replay --fixtures <dir>                 run NDJSON fixtures through the REAL ingest
  *   sync   --registry <file>                apply the registry to Cloudflare (not implemented)
+ *   truth                                   does the data in production D1 lie (network:
+ *                                           wrangler, read-only); exit 1 on a finding
  *
  * Keep the pipeline logic in src/ and import it here. If logic starts living in the CLI, the
  * Worker and the CLI will drift and `make integration` stops proving anything.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EdgeContext } from "../src/ingest";
 import { MAX_EVENTS_PER_REQUEST } from "../src/schema";
+import { truthFindings, truthSummary, type TruthInput } from "../src/truth";
 import { fetchAgents, renderAgents } from "./agents";
 import { checkRegistry, readRegistry, renderGenerated, sourceIdsOf } from "./registry";
 
@@ -184,6 +188,47 @@ async function replay(): Promise<void> {
   console.error(`replayed ${replayed} events from ${files.length} fixture file(s), 0 rejected`);
 }
 
+/**
+ * `make truth`: read what production D1 holds and ask src/truth.ts whether it lies.
+ *
+ * Read-only, and through wrangler rather than the Worker's API: /v1/* sits behind Cloudflare
+ * Access, which a launchd job cannot pass, while wrangler already holds the account login.
+ * One call for all four queries — each wrangler start costs seconds.
+ */
+function truth(): void {
+  const today = new Date().toISOString().slice(0, 10);
+  const day = (back: number) => new Date(Date.parse(today) - back * 86_400_000).toISOString().slice(0, 10);
+  const sql = [
+    // Search Console lags three days; fourteen days of it.
+    `SELECT site, SUM(clicks) AS clicks, SUM(impressions) AS impressions FROM search_daily
+       WHERE kind = 'query' AND day BETWEEN '${day(16)}' AND '${day(3)}' GROUP BY site`,
+    `SELECT provider, source, through, date(ran / 1000, 'unixepoch') AS ran, note FROM store_sync`,
+    // GA4 lands a day after ours; a week where both have written.
+    `SELECT source, provider, SUM(page_views) AS views FROM page_daily
+       WHERE day BETWEEN '${day(9)}' AND '${day(3)}' GROUP BY source, provider`,
+    `SELECT source, day, value AS people FROM own_daily
+       WHERE platform = 'web' AND metric = 'people' AND day BETWEEN '${day(17)}' AND '${day(1)}'`,
+  ].join(";\n");
+  const raw = execFileSync(
+    "pnpm",
+    ["-s", "wrangler", "d1", "execute", "superduper-stores", "--remote", "--json", "--command", sql],
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const results = (JSON.parse(raw) as { results: unknown[] }[]).map((r) => r.results);
+  if (results.length !== 4) fail(`truth: expected 4 result sets from D1, got ${results.length}`);
+  const input = {
+    today,
+    search: results[0],
+    syncs: results[1],
+    pages: results[2],
+    people: results[3],
+  } as TruthInput;
+  const findings = truthFindings(input);
+  for (const f of findings) console.log(`${f.rule.padEnd(13)} ${f.subject}: ${f.detail}`);
+  console.log(truthSummary(input, findings));
+  process.exit(findings.length > 0 ? 1 : 0);
+}
+
 // A malformed registry or a missing file must read as one clear line, not a stack trace —
 // this runs in pre-commit hooks and in CI, where nobody reads the frames.
 try {
@@ -200,6 +245,9 @@ try {
     case "replay":
       await replay();
       break;
+    case "truth":
+      truth();
+      break;
     case "sync":
       fail(
         "`sync` is not implemented yet. It applies the registry to Cloudflare: allowed origins " +
@@ -208,7 +256,7 @@ try {
       );
       break;
     default:
-      console.error("usage: main.ts <gen|check|replay|sync> [flags]");
+      console.error("usage: main.ts <gen|check|replay|sync|truth> [flags]");
       process.exit(2);
   }
 } catch (error) {

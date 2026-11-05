@@ -40,6 +40,9 @@ format: ## prettier
 integration: check ## replay fixtures through the pipeline — no network, no credentials
 	pnpm tsx cli/main.ts replay --fixtures cli/fixtures
 
+truth: ## does the data lie — copies, stuck syncs, counter gaps, spikes (network: production D1, read-only)
+	@pnpm -s tsx cli/main.ts truth
+
 sync: ## apply registry/sources.yaml — allowed origins, write keys, partitions
 	pnpm tsx cli/main.ts sync --registry registry/sources.yaml
 
