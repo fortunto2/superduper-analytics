@@ -12,6 +12,8 @@ import { buildPagesQuery, buildQuery } from "../src/stats";
 import { parseSalesReport, rowsSalesWrites } from "../src/stores/appstore";
 import { readCampaigns, readTotals, readSync, writeRows, writeSync } from "../src/stores/db";
 import { dayBefore, daysBetween, storeWindow, utcDay, type StoreRow } from "../src/stores/schema";
+import { onAppStore } from "../src/stores/sync";
+import { APPS } from "../src/registry.generated";
 
 /** The real header, in Apple's order, so a positional reader would pass and a named one earns it. */
 const HEADER = [
@@ -354,5 +356,22 @@ describe("окно запроса — параметр, а не подмена �
     // иначе тихий сайт исчезает из истории безвозвратно: Analytics Engine стирает через 90 дней.
     expect(buildPagesQuery("events", { day: "2026-08-03" }, 1000)).toContain("LIMIT 1000");
     expect(buildPagesQuery("events", 7)).toContain("LIMIT 60");
+  });
+});
+
+describe("which apps Apple is asked about", () => {
+  it("skips an iOS app that is registered but not on the store (specbridge, 5 Nov 2026)", () => {
+    const apps = [
+      { id: "life2film", platform: "ios", storeId: "1234567890" },
+      { id: "specbridge", platform: "ios", storeId: "" },
+      { id: "carettafriends", platform: "android", storeId: "" },
+    ];
+    expect(onAppStore(apps).map((a) => a.id)).toEqual(["life2film"]);
+  });
+
+  it("still asks about every real iOS app in the registry", () => {
+    const ids = onAppStore(APPS).map((a) => a.id);
+    expect(ids).toContain("life2film");
+    expect(ids).not.toContain("specbridge");
   });
 });

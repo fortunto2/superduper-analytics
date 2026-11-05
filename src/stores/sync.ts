@@ -21,6 +21,16 @@ import type { StoreRow } from "./schema";
 import { readSync, writeRows, writeSync } from "./db";
 import { dayBefore, daysBetween, RESTATEMENT_DAYS, utcDay } from "./schema";
 
+/**
+ * The apps Apple can report on: iOS, and with an App Store id. Android has its own console and
+ * format. An iOS app with no id is registered but not on the store (specbridge, 4 Nov 2026:
+ * installed from a dev profile); asking Apple about it is `/apps//…`, a 400 that rode in every
+ * run's note. Not being on the store is a fact about the app, not a failure of the job.
+ */
+export function onAppStore<A extends { platform: string; storeId: string }>(apps: readonly A[]): A[] {
+  return apps.filter((a) => a.platform === "ios" && a.storeId !== "");
+}
+
 export type SyncResult = {
   provider: string;
   days: number;
@@ -69,9 +79,7 @@ export async function syncAppStore(
     };
   }
 
-  const storeIdToSource = new Map(
-    APPS.filter((a) => a.platform === "ios").map((a) => [a.storeId, a.id as string]),
-  );
+  const storeIdToSource = new Map(onAppStore(APPS).map((a) => [a.storeId, a.id as string]));
 
   // Yesterday, not today: today's report does not exist yet, and asking for it is a 404 on every
   // single run — noise that teaches you to ignore the logs.
@@ -186,9 +194,7 @@ export async function syncStoreAnalytics(
       result: { provider: pass.provider, days: 0, rows: 0, skipped: 0, from: "", to: "", notes: [] } as SyncResult,
     })),
   );
-  // Android сюда не попадает: у Google своя консоль и свой формат. Приложение без номера в
-  // App Store — тоже (у Play его нет), но сейчас такого среди ios нет, и тип это подтверждает.
-  const apps = APPS.filter((a) => a.platform === "ios");
+  const apps = onAppStore(APPS);
 
   for (const app of apps) {
     let reportIds: Map<string, string>;
