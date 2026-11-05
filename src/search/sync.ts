@@ -5,7 +5,7 @@
  * ходит не за «вчера», а за окно, и пишет UPSERT'ом. Взять один вчерашний день значило бы
  * записывать пустоту каждый раз и не заметить этого.
  */
-import { fetchSearchDay, googleToken, listProperties, propertyFor, searchableSites, type SearchEnv, type SearchRow } from "./console";
+import { fetchSearchDay, googleToken, listProperties, pageScope, propertyFor, searchableSites, type SearchEnv, type SearchRow } from "./console";
 import { dayBefore, utcDay } from "../stores/schema";
 
 /** Насколько отстаёт консоль. Три дня — с запасом к её обычным двум. Экспортируется: читатели
@@ -77,23 +77,9 @@ export async function syncSearchConsole(
       notes.push(`${site.id}: no Search Console property`);
       continue;
     }
-    if (property.startsWith("sc-domain:")) {
-      notes.push(`${site.id}: domain property — query rows include subdomains`);
-    }
-    // Доменный ресурс покрывает ВСЕ поддомены разом. Для страниц это чинится фильтром по
-    // хосту — иначе superduperai.co забирает строки books, live2play и остальных соседей и
-    // выглядит крупнее себя. Для запросов не чинится ничем: Google не говорит, на какой
-    // поддомен вёл показ, и это записано как ограничение, а не спрятано.
-    const host = new URL(site.url).host.toLowerCase();
-    const wide = property.startsWith("sc-domain:");
-    const mine = (row: SearchRow): boolean => {
-      if (!wide || row.kind !== "page") return true;
-      try {
-        return new URL(row.key).host.toLowerCase() === host;
-      } catch {
-        return true;
-      }
-    };
+    // Доменный ресурс покрывает ВСЕ поддомены разом: без фильтра superduperai.co забирает
+    // строки books, live2play и остальных соседей, а они — его. См. `pageScope`.
+    const scope = pageScope(site.url, property);
 
     // Дни и разрезы одного сайта независимы — идут разом, а не по очереди. Последовательно
     // это давало по секунде на вызов и минуты общего времени на ровном месте.
@@ -106,7 +92,7 @@ export async function syncSearchConsole(
       const chunk = await Promise.all(
         tasks.slice(i, i + CONCURRENCY).map(async (t) => {
           try {
-            return (await fetchSearchDay(token, property, site.id, t.day, t.kind)).filter(mine);
+            return await fetchSearchDay(token, property, site.id, t.day, t.kind, scope);
           } catch (error) {
             // Один сайт без доступа не должен уносить остальные: ресурс мог быть не подтверждён
             // для сервисного аккаунта, и это факт про настройку, а не сбой джоба.

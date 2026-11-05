@@ -117,6 +117,8 @@ export async function fetchSearchDay(
   siteId: string,
   day: string,
   kind: "query" | "page",
+  /** Из `pageScope`: сужает ресурс шире сайта до его страниц. */
+  scope?: string,
   /**
    * Сто, а не двадцать пять. У superduperai 196 страниц в выдаче, и на двадцати пяти строках
    * в сутки хвост обрезался молча — а именно в хвосте живут запросы, которые ещё можно
@@ -130,16 +132,11 @@ export async function fetchSearchDay(
   const response = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      startDate: day,
-      endDate: day,
-      dimensions: [kind],
-      rowLimit: limit,
-      // Только веб-поиск: картинки и новости мешаются в позиции и отвечают на другой вопрос.
-      type: "web",
-    }),
+    body: JSON.stringify(searchBody(day, kind, limit, scope)),
   });
-  if (!response.ok) return [];
+  // Ошибка — не пустота. Раньше здесь был `return []`, и отказ Google выглядел как «показов
+  // нет»; теперь он уходит в примечания прогона вместе с остальными.
+  if (!response.ok) throw new Error(`${response.status} ${(await response.text()).slice(0, 120)}`);
 
   const body = await response.json<{
     rows?: { keys?: string[]; clicks?: number; impressions?: number; position?: number }[];
@@ -153,6 +150,51 @@ export async function fetchSearchDay(
     impressions: row.impressions ?? 0,
     position: row.position ?? 0,
   }));
+}
+
+/** Тело запроса searchAnalytics. Отдельно от fetch, чтобы фильтр было чем проверить. */
+export function searchBody(day: string, kind: "query" | "page", limit: number, scope?: string) {
+  return {
+    startDate: day,
+    endDate: day,
+    dimensions: [kind],
+    rowLimit: limit,
+    // Только веб-поиск: картинки и новости мешаются в позиции и отвечают на другой вопрос.
+    type: "web",
+    ...(scope === undefined
+      ? {}
+      : { dimensionFilterGroups: [{ filters: [{ dimension: "page", operator: "contains", expression: scope }] }] }),
+  };
+}
+
+/**
+ * Чем сузить ресурс до одного сайта, если ресурс шире него; `undefined`, если совпадает.
+ *
+ * Доменный ресурс `sc-domain:superduperai.co` отвечает за все поддомены разом, и до 04.11.2026
+ * джоб записывал его запросы КАЖДОМУ сайту на нём: у superduperai, live2play, promptwizard и
+ * rusty лежали одни и те же 35 кликов и 1166 показов. Фильтр по странице чинит и запросы, хотя
+ * в группировке страницы нет: Google фильтрует по измерению, по которому не группирует. Заодно
+ * чинит страницы: сотня строк в сутки бралась на весь домен и только потом резалась по хосту,
+ * так что соседи помельче вытеснялись из сотни целиком (у live2play за три месяца 3 строки).
+ *
+ * С фильтром Google считает показы по страницам, а не по ресурсу, поэтому сумма бывает чуть
+ * больше (superduperai.co 30.10: 78 против 69): один показ двух страниц — это два показа.
+ *
+ * `://host/path/`, а не хост: `contains` по `superduperai.co/` поймал бы и поддомены, а у
+ * pocketmap сайт живёт в пути на чужом хосте.
+ */
+export function pageScope(siteUrl: string, property: string): string | undefined {
+  const site = new URL(siteUrl);
+  const prefix = `${site.host.toLowerCase()}${site.pathname.replace(/\/*$/, "/")}`;
+  if (!property.startsWith("sc-domain:")) {
+    try {
+      const p = new URL(property);
+      if (`${p.host.toLowerCase()}${p.pathname}` === prefix) return undefined;
+    } catch {
+      // Не адрес — значит, неизвестно, чем покрыт; сузить безопаснее.
+    }
+  }
+  return `://${prefix}`;
 }
 
 /** Сайты реестра, у которых есть, что спрашивать: живые и с адресом. */
@@ -173,8 +215,23 @@ export async function listProperties(token: string): Promise<string[]> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) return [];
-  const body = await response.json<{ siteEntry?: { siteUrl?: string }[] }>();
-  return (body.siteEntry ?? []).map((e) => e.siteUrl ?? "").filter((u) => u !== "");
+  return usableProperties(
+    (await response.json<{ siteEntry?: { siteUrl?: string; permissionLevel?: string }[] }>()).siteEntry ?? [],
+  );
+}
+
+/**
+ * Ресурсы, по которым сервисный аккаунт может спрашивать.
+ *
+ * `siteUnverifiedUser` в списке есть, но каждый запрос к нему отвечает 403. У airsignal.app и
+ * visayes.app точный адрес именно такой, а propertyFor берёт точный адрес первым — и до
+ * 04.11.2026 оба сайта не имели в D1 ни одной строки поиска при рабочем доменном ресурсе рядом.
+ */
+export function usableProperties(entries: { siteUrl?: string; permissionLevel?: string }[]): string[] {
+  return entries
+    .filter((e) => e.permissionLevel !== "siteUnverifiedUser")
+    .map((e) => e.siteUrl ?? "")
+    .filter((u) => u !== "");
 }
 
 /**
@@ -203,9 +260,7 @@ export function propertyFor(siteUrl: string, properties: string[]): string | und
   // возвращали undefined, то есть поддомен без точного ресурса просто исчезал из данных и
   // отчитывался как «нет ресурса в консоли» — при том, что ресурс есть.
   //
-  // Брать его безопасно: строки страниц синк отфильтрует по хосту. Шире окажутся только
-  // запросы — Google не говорит, на какой поддомен вёл показ, — и это записано в примечании
-  // прогона, а не спрятано.
+  // Брать его безопасно: синк сузит и запросы, и страницы фильтром из `pageScope`.
   const parts = host.split(".");
   if (parts.length > 2) {
     const registrable = `sc-domain:${parts.slice(-2).join(".")}`;
