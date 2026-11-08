@@ -31,6 +31,19 @@ export type YoutubeToolEnv = YoutubeEnv & StatsEnv & { STORES?: D1Database };
 
 const MAX_DAYS = 730;
 
+/**
+ * The API's names for traffic sources that read as something else. SUBSCRIBER is the worst:
+ * on 8 Nov 2026 it was 61% of a talk's views on a 64-subscriber channel, because it is YouTube's
+ * "Browse features" (home page included), not people who subscribed.
+ */
+export const SOURCE_MEANING: Record<string, string> = {
+  SUBSCRIBER: "browse features: home page and subscriptions feed, not only subscribers",
+  NO_LINK_OTHER: "direct or unknown",
+  YT_OTHER_PAGE: "other YouTube pages",
+  SHORTS: "Shorts feed",
+  EXT_URL: "links from other sites",
+};
+
 export function youtubeDays(args: Record<string, unknown>): number {
   const asked = Number(args.days ?? 28);
   if (!Number.isInteger(asked) || asked < 1) return 28;
@@ -53,8 +66,18 @@ export const YOUTUBE_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        days: { type: "integer", minimum: 1, maximum: MAX_DAYS, description: "Window in days, default 28." },
-        limit: { type: "integer", minimum: 1, maximum: 100, description: "Videos to list, default 15." },
+        days: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_DAYS,
+          description: "Window in days, default 28.",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Videos to list, default 15.",
+        },
       },
     },
   },
@@ -71,7 +94,12 @@ export const YOUTUBE_TOOLS = [
       type: "object",
       properties: {
         video: { type: "string", description: "Video id, or a fragment of the title." },
-        days: { type: "integer", minimum: 1, maximum: MAX_DAYS, description: "Window in days, default 28." },
+        days: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_DAYS,
+          description: "Window in days, default 28.",
+        },
       },
       required: ["video"],
     },
@@ -89,7 +117,10 @@ export async function runYoutubeTool(
 ): Promise<Out> {
   const channel = defaultChannel();
   if (channel === undefined || env.STORES === undefined) {
-    return { text: "No YouTube channel is registered (registry/sources.yaml → channels).", isError: true };
+    return {
+      text: "No YouTube channel is registered (registry/sources.yaml → channels).",
+      isError: true,
+    };
   }
   const through = await readThrough(env.STORES, channel.id);
   if (through === undefined) {
@@ -149,7 +180,8 @@ export async function runYoutubeTool(
 
   // youtube_video
   const query = String(args.video ?? "").trim();
-  if (query === "") return { text: "`video` is required: an id or a fragment of the title.", isError: true };
+  if (query === "")
+    return { text: "`video` is required: an id or a fragment of the title.", isError: true };
   const found = await findVideos(env.STORES, channel.id, query);
   if (found.length === 0) return { text: `No video matches "${query}".`, isError: true };
   if (found.length > 1 && found[0]!.video_id !== query) {
@@ -167,18 +199,23 @@ export async function runYoutubeTool(
     header,
     "",
     `${video.title} [${video.video_id}]`,
-    `${video.kind}, ${video.privacy}, published ${video.published.slice(0, 10)}, ${Math.round(video.duration_s / 60 * 10) / 10} min; ` +
+    `${video.kind}, ${video.privacy}, published ${video.published.slice(0, 10)}, ${Math.round((video.duration_s / 60) * 10) / 10} min; ` +
       (video.campaigns === "" ? "no tagged link in description" : `campaign ${video.campaigns}`),
     `Window: ${Math.round(sum((r) => r.views))} views, ${(sum((r) => r.minutes) / 60).toFixed(1)}h watched, ` +
       `subscribers +${Math.round(sum((r) => r.subs_gained))}.`,
     "",
     "Daily views (days with views only): " +
-      (series.filter((r) => r.views > 0).map((r) => `${r.day.slice(5)} ${Math.round(r.views)}`).join(", ") || "none"),
+      (series
+        .filter((r) => r.views > 0)
+        .map((r) => `${r.day.slice(5)} ${Math.round(r.views)}`)
+        .join(", ") || "none"),
     "",
   ];
 
   if (!isConfigured(env)) {
-    lines.push("Live reads (retention, traffic sources) unavailable: YT_* secrets are not set on the Worker.");
+    lines.push(
+      "Live reads (retention, traffic sources) unavailable: YT_* secrets are not set on the Worker.",
+    );
     return { text: lines.join("\n") };
   }
   try {
@@ -187,11 +224,19 @@ export async function runYoutubeTool(
       fetchRetention(token, video.video_id, video.published.slice(0, 10), to, doFetch),
       fetchTrafficSources(token, video.video_id, from, to, doFetch),
     ]);
-    lines.push(...formatRetention(curve, video.duration_s), "  (retention is over the video's whole life, not the window)", "");
+    lines.push(
+      ...formatRetention(curve, video.duration_s),
+      "  (retention is over the video's whole life, not the window)",
+      "",
+    );
     const totalViews = sources.reduce((a, s) => a + s.views, 0);
     lines.push(
       `Traffic sources in the window (${Math.round(totalViews)} views):`,
-      ...sources.map((s) => `- ${s.source}: ${s.views} (${totalViews > 0 ? Math.round((s.views / totalViews) * 100) : 0}%)`),
+      ...sources.map(
+        (s) =>
+          `- ${s.source}${SOURCE_MEANING[s.source] ? ` (${SOURCE_MEANING[s.source]})` : ""}: ${s.views} ` +
+          `(${totalViews > 0 ? Math.round((s.views / totalViews) * 100) : 0}%)`,
+      ),
     );
   } catch (error) {
     lines.push(`Live reads failed: ${String(error)}`);
