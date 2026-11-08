@@ -34,6 +34,7 @@ import { METRIC_SLOTS } from "./registry";
 import { fetchMetric } from "./stats";
 import { fetchConversion } from "./conversion";
 import { RETENTION_DAYS } from "./schema";
+import { runYoutubeTool, YOUTUBE_TOOLS, type YoutubeToolEnv } from "./youtube/tool";
 
 const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
 const LATEST = SUPPORTED_VERSIONS[0]!;
@@ -41,7 +42,7 @@ const SERVER = { name: "superduper-analytics", title: "superduper analytics", ve
 
 type JsonRpc = { jsonrpc: string; id?: unknown; method?: string; params?: Record<string, unknown> };
 
-export type McpEnv = OverviewEnv & { DASHBOARD_KEY?: string };
+export type McpEnv = OverviewEnv & YoutubeToolEnv & { DASHBOARD_KEY?: string };
 
 const DAYS_PROPERTY = {
   type: "integer",
@@ -206,6 +207,7 @@ const TOOLS = [
       "other; read it as installed or not.",
     inputSchema: { type: "object", properties: { days: DAYS_PROPERTY } },
   },
+  ...YOUTUBE_TOOLS,
 ];
 
 const cors = {
@@ -331,6 +333,11 @@ export async function handleMcp(request: Request, env: McpEnv, now: number): Pro
           ...SOURCE_IDS.filter(id => !SITES.some(s => s.id === id)).map(id => `- ${id}`),
         ];
         return toolText(id, lines.join("\n"), version);
+      }
+
+      if (name === "youtube" || name === "youtube_video") {
+        const out = await runYoutubeTool(name, args, env, now);
+        return toolText(id, out.text, version, out.isError === true);
       }
 
       const days = windowDays(args);

@@ -76,9 +76,28 @@ const App = z.object({
   ...Publishable,
 });
 
+/**
+ * A YouTube channel we publish on. NOT an event source: a channel has no script to carry, so it
+ * never appears in SOURCE_IDS and ingest rejects events claiming its id. It exists so that the
+ * numbers YouTube reports about it (`store_daily`, `provider = 'youtube'`) have a registry id to
+ * hang off, in the same namespace as everything else.
+ *
+ * `channel_id` is public (it is in the channel's URL). `since` is the day the channel was
+ * created, which is how far a first run reaches back: one report call covers the whole history,
+ * so a backfill is not a campaign, it is the first run.
+ */
+const Channel = z.object({
+  id: SourceId,
+  channel_id: z.string().regex(/^UC[\w-]{22}$/, "a YouTube channel id: UC + 22 characters"),
+  url: z.url(),
+  name: z.string().min(1).optional(),
+  since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"),
+});
+
 export const RegistryFile = z.object({
   sites: z.array(Site).min(1),
   apps: z.array(App),
+  channels: z.array(Channel).default([]),
   /**
    * Имена метрик, получающих свой double-слот. Позиция — это порядок в массиве, поэтому
    * список только дополняется: перестановка задним числом переименовывает историю.
@@ -168,6 +187,14 @@ export function checkRegistry(
     seenApps.add(key);
   }
 
+  // A channel id that is also an event source would let `store_daily` rows and events mean two
+  // different things under one name.
+  for (const channel of registry.channels) {
+    if (sourceIdsOf(registry).includes(channel.id)) {
+      problems.push(`channels: "${channel.id}" is already a site or app id`);
+    }
+  }
+
   const siteIds = new Set(registry.sites.map((s) => s.id));
   for (const app of registry.apps) {
     if (app.site !== undefined && !siteIds.has(app.site)) {
@@ -223,6 +250,15 @@ export function appsOf(
     .sort((a, b) => a.id.localeCompare(b.id) || a.platform.localeCompare(b.platform));
 }
 
+/** Channels with the id the YouTube API knows them by. The daily YouTube job iterates this. */
+export function channelsOf(
+  registry: RegistryFile,
+): { id: string; channelId: string; name: string; since: string }[] {
+  return registry.channels
+    .map((c) => ({ id: c.id, channelId: c.channel_id, name: c.name ?? c.id, since: c.since }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /** The exact contents of src/registry.generated.ts. Compared byte-for-byte by `check`. */
 export function renderGenerated(registry: RegistryFile): string {
   const ids = sourceIdsOf(registry)
@@ -233,6 +269,13 @@ export function renderGenerated(registry: RegistryFile): string {
       (a) =>
         `  { id: ${JSON.stringify(a.id)}, platform: ${JSON.stringify(a.platform)}, ` +
         `storeId: ${JSON.stringify(a.storeId)}, site: ${a.site === null ? "null" : JSON.stringify(a.site)} },`,
+    )
+    .join("\n");
+  const channels = channelsOf(registry)
+    .map(
+      (c) =>
+        `  { id: ${JSON.stringify(c.id)}, channelId: ${JSON.stringify(c.channelId)}, ` +
+        `name: ${JSON.stringify(c.name)}, since: ${JSON.stringify(c.since)} },`,
     )
     .join("\n");
   const metrics = registry.metrics.map((m) => `  ${JSON.stringify(m)},`).join("\n");
@@ -265,6 +308,11 @@ ${sites}
 /** Apps with the id their store knows them by — what the daily store-report job iterates. */
 export const APPS = [
 ${apps}
+] as const;
+
+/** YouTube channels — not event sources, so absent from SOURCE_IDS. The daily YouTube job iterates this. */
+export const CHANNELS = [
+${channels}
 ] as const;
 
 /**

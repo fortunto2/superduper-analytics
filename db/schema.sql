@@ -130,3 +130,61 @@ CREATE TABLE IF NOT EXISTS page_daily (
 ) WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS page_daily_source_day ON page_daily (source, day);
+
+-- YouTube, по ролику и по суткам. Канал целиком лежит в store_daily (provider = 'youtube'), а
+-- здесь зерно другое: ролик x сутки. Класть video_id в `campaign` или `country` значило бы
+-- назвать колонку не тем, что в ней лежит.
+--
+-- ШИРОКАЯ, а не длинная, как store_daily, и это осознанное отступление. Набор метрик здесь
+-- закрыт: это ровно те колонки, что отдаёт один отчёт Analytics API, а не растущий список
+-- чужих имён. Зато D1 принимает до 100 параметров на запрос, и длинная форма стоила бы
+-- восемь запросов на строку вместо одного: бэкфилл всей истории (2536 ролико-суток) это
+-- 2536 запросов, а не 20 тысяч.
+--
+-- Нулевые счётчики пишутся нулями, а не пропускаются: «0 лайков» и «строки нет» читаются
+-- одинаково только до первого среднего. Средние (`avg_view_s`, `avg_view_pct`) хранятся как
+-- отдал YouTube; складывать их за окно можно только взвешивая на `views`.
+--
+-- Primary key = identity измерения, запись UPSERT: YouTube уточняет последние дни, джоб
+-- перечитывает хвост окна каждый раз, как с Apple.
+CREATE TABLE IF NOT EXISTS youtube_video_daily (
+  -- UTC, YYYY-MM-DD, день YouTube Analytics
+  day          TEXT NOT NULL,
+  -- id канала из реестра (`channels:`), не id ролика
+  source       TEXT NOT NULL,
+  video_id     TEXT NOT NULL,
+  views        REAL NOT NULL,
+  minutes      REAL NOT NULL,
+  avg_view_s   REAL NOT NULL,
+  avg_view_pct REAL NOT NULL,
+  subs_gained  REAL NOT NULL,
+  likes        REAL NOT NULL,
+  shares       REAL NOT NULL,
+  comments     REAL NOT NULL,
+  fetched      INTEGER NOT NULL,
+  PRIMARY KEY (day, source, video_id)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS youtube_video_daily_video ON youtube_video_daily (source, video_id, day);
+
+-- Что известно о ролике, не меняясь по суткам. Обновляется каждый запуск целиком: название и
+-- описание правят после публикации, а в описание добавляют метки.
+CREATE TABLE IF NOT EXISTS youtube_videos (
+  source     TEXT NOT NULL,
+  video_id   TEXT NOT NULL,
+  title      TEXT NOT NULL,
+  -- ISO 8601 как отдал Data API
+  published  TEXT NOT NULL,
+  -- shorts | long | live. Берётся из creatorContentType самой YouTube (тип с наибольшим
+  -- числом просмотров); у ролика без просмотров этого отчёта нет, и тогда по длительности.
+  kind       TEXT NOT NULL,
+  duration_s INTEGER NOT NULL,
+  -- public | unlisted | private. Приватный ролик в отчётах остаётся, и без этого поля его
+  -- нули выглядят как провал.
+  privacy    TEXT NOT NULL,
+  -- utm_campaign из ссылок в описании, через запятую; '' если помеченной ссылки нет, и это
+  -- самостоятельный вывод: такой ролик не отдаёт сайту ничего измеримого.
+  campaigns  TEXT NOT NULL DEFAULT '',
+  fetched    INTEGER NOT NULL,
+  PRIMARY KEY (source, video_id)
+) WITHOUT ROWID;

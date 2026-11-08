@@ -56,6 +56,7 @@ src/network.ts       переходы между нашими продуктам
 src/stores/analytics-reports.ts  установки, УДАЛЕНИЯ и сессии от Apple. Асинхронный API в четыре шага
 src/stores/          what Apple and Google report: exact daily totals, in D1, not in AE
 src/search/          Search Console: impressions, queries, position. The leading indicator
+src/youtube/         канал и ролики YouTube: api (два API, чистое отображение), sync (крон 05:40), read + tool (MCP `youtube`, `youtube_video`)
 src/ga/              GA4 page views — the other counter on the same pages, never summed
 src/zones.ts         Cloudflare's own edge analytics. Where "how many people" comes from
 src/overview.ts      assembles both for the dashboard — never sums them

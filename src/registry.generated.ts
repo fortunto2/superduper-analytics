@@ -84,6 +84,11 @@ export const APPS = [
   { id: "swift-terminal", platform: "ios", storeId: "6758515520", site: null },
 ] as const;
 
+/** YouTube channels — not event sources, so absent from SOURCE_IDS. The daily YouTube job iterates this. */
+export const CHANNELS = [
+  { id: "rust-starman", channelId: "UCnLgMfncEual0Z19MDlspCw", name: "Rust Starman", since: "2020-10-14" },
+] as const;
+
 /**
  * Числовые размерности со своим double-слотом, В ПОРЯДКЕ ПОЗИЦИЙ: первая — double2, и так далее.
  * Массив только дополняется; `check` сравнивает его с реестром и падает на перестановке.

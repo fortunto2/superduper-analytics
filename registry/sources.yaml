@@ -197,6 +197,17 @@ apps:
     platform: macos
     bundle_id: co.superduperai.supervox
 
+# Каналы YouTube. НЕ источники событий: скрипта на канале нет, в SOURCE_IDS их нет, и ingest
+# отвергнет событие с таким id. Запись нужна, чтобы у чисел, которые YouTube сообщает о канале
+# (store_daily, provider = 'youtube'), был id из общего пространства имён. `since` это день
+# создания канала: первый запуск берёт всю историю одним отчётом.
+channels:
+  - id: rust-starman
+    name: Rust Starman
+    channel_id: UCnLgMfncEual0Z19MDlspCw
+    url: https://www.youtube.com/@salavatov
+    since: "2020-10-14"
+
 # Числовые размерности, которые можно СЧИТАТЬ, а не только прочитать глазами.
 #
 # `metrics` на событии уезжают одним JSON в blob11, и SQL Analytics Engine внутрь JSON не

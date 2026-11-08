@@ -50,6 +50,15 @@ ANON_SALT=replace-with-openssl-rand-hex-32
 GOOGLE_SA_EMAIL
 GOOGLE_SA_KEY
 
+# YouTube Analytics, для суточного джоба канала (крон 05:40) и живых чтений в MCP. OAuth
+# владельца канала, область `youtube`; refresh token не умирает через 7 дней только пока
+# приложение в Google Cloud в статусе In production. Значения берутся из token.json
+# авторизованного пользователя и кладутся в воркер пайпом, чтобы не попасть в argv:
+#   python3 -I -c "import json,sys;sys.stdout.write(json.load(open(F))['refresh_token'])" | pnpm wrangler secret put YT_REFRESH_TOKEN
+YT_CLIENT_ID
+YT_CLIENT_SECRET
+YT_REFRESH_TOKEN
+
 # Shared key gating the dashboard and /v1/*. Unset means those routes refuse outright — the
 # read side shows the business and must never be public by accident. The real answer is
 # Cloudflare Access in front of / and /v1/*; this is the stopgap until that is configured.

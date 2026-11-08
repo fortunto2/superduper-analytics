@@ -78,6 +78,10 @@ export type StoreTotal = {
  * Country and campaign are summed away here. Both are worth keeping in the table (they cost
  * nothing and cannot be recovered once dropped) and neither belongs on the overview: the question
  * that page answers is "is this product alive", and thirty countries do not help answer it.
+ *
+ * `provider <> 'youtube'`: the channel rows (views_long, watch_minutes_shorts…) are not what a
+ * STORE reports about an app, and as columns of this table they would widen it by a dozen
+ * headers for one row. The `youtube` MCP tool reads them instead.
  */
 export async function readTotals(
   db: D1Database,
@@ -89,6 +93,7 @@ export async function readTotals(
       `SELECT source, provider, metric, SUM(value) AS value
          FROM store_daily
         WHERE day >= ? AND day <= ?
+          AND provider <> 'youtube'
      GROUP BY source, provider, metric
      ORDER BY source, provider, metric`,
     )
