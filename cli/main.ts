@@ -17,6 +17,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EdgeContext } from "../src/ingest";
+import { SITES } from "../src/registry.generated";
 import { MAX_EVENTS_PER_REQUEST } from "../src/schema";
 import { truthFindings, truthSummary, type TruthInput } from "../src/truth";
 import { fetchAgents, renderAgents } from "./agents";
@@ -216,11 +217,15 @@ function truth(): void {
   );
   const results = (JSON.parse(raw) as { results: unknown[] }[]).map((r) => r.results);
   if (results.length !== 4) fail(`truth: expected 4 result sets from D1, got ${results.length}`);
+  // Two counters only where the registry says there are two. A site that dropped GA keeps its
+  // `ga4` history in D1, and a window straddling the day it left reads as one counter blind
+  // (superduperai, 7 Nov 2026: own 262 vs ga4 92, all of the 92 from before the switch).
+  const withGa = new Set(SITES.filter((s) => s.ga !== "").map((s) => s.id as string));
   const input = {
     today,
     search: results[0],
     syncs: results[1],
-    pages: results[2],
+    pages: (results[2] as TruthInput["pages"]).filter((p) => withGa.has(p.source)),
     people: results[3],
   } as TruthInput;
   const findings = truthFindings(input);

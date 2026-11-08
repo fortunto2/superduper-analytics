@@ -68,12 +68,10 @@ describe("gaSites", () => {
     expect(ids).not.toContain("miralinka-marafon");
   });
 
-  it("одно свойство на два сайта различается хостом", () => {
-    const shared = gaSites().filter((s) => s.property === "374549185");
-    expect(shared.map((s) => s.host).sort()).toEqual([
-      "live2play.superduperai.co",
-      "superduperai.co",
-    ]);
+  it("не спрашивает сайт, с которого GA сняли (superduperai и live2play, 2 ноября 2026)", () => {
+    const ids = gaSites().map((s) => s.id);
+    expect(ids).not.toContain("superduperai");
+    expect(ids).not.toContain("live2play");
   });
 });
 
