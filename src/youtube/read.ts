@@ -98,7 +98,11 @@ export async function readVideoTotals(
       comments: Number(r.comments),
     } satisfies VideoTotal;
   });
-  return { videos: all.slice(0, limit), total: all.length, withViews: all.filter((v) => v.views > 0).length };
+  return {
+    videos: all.slice(0, limit),
+    total: all.length,
+    withViews: all.filter((v) => v.views > 0).length,
+  };
 }
 
 /** Ролик по id или по куску названия. Несколько совпадений — не угадываем, возвращаем все. */
@@ -106,14 +110,32 @@ export async function findVideos(
   db: D1Database,
   source: string,
   query: string,
-): Promise<{ video_id: string; title: string; published: string; kind: string; duration_s: number; privacy: string; campaigns: string }[]> {
+): Promise<
+  {
+    video_id: string;
+    title: string;
+    published: string;
+    kind: string;
+    duration_s: number;
+    privacy: string;
+    campaigns: string;
+  }[]
+> {
   const { results } = await db
     .prepare(
       `SELECT video_id, title, published, kind, duration_s, privacy, campaigns FROM youtube_videos
        WHERE source = ? AND (video_id = ? OR title LIKE ? ESCAPE '\\') ORDER BY published DESC LIMIT 10`,
     )
     .bind(source, query, `%${query.replace(/[\\%_]/g, "\\$&")}%`)
-    .all<{ video_id: string; title: string; published: string; kind: string; duration_s: number; privacy: string; campaigns: string }>();
+    .all<{
+      video_id: string;
+      title: string;
+      published: string;
+      kind: string;
+      duration_s: number;
+      privacy: string;
+      campaigns: string;
+    }>();
   return results;
 }
 
@@ -139,7 +161,9 @@ export async function readVideoSeries(
  * метке через все сайты. Окно у счётчика скользящее («последние N суток от сейчас»), а у YouTube
  * кончается лагом, поэтому числа идут за окно от начала YouTube-окна до сегодня.
  */
-export function campaignIndex(list: CampaignTotal[]): Map<string, { visits: number; store_clicks: number }> {
+export function campaignIndex(
+  list: CampaignTotal[],
+): Map<string, { visits: number; store_clicks: number }> {
   const out = new Map<string, { visits: number; store_clicks: number }>();
   for (const c of list) {
     const cur = out.get(c.utm_campaign) ?? { visits: 0, store_clicks: 0 };
@@ -150,13 +174,97 @@ export function campaignIndex(list: CampaignTotal[]): Map<string, { visits: numb
   return out;
 }
 
+export type RawVisit = {
+  ts: number;
+  source: string;
+  utm_campaign: string;
+  path: string;
+  anon: string;
+  weight: number;
+};
+
+/** AE `FORMAT JSON` rows of buildYoutubeVisitsQuery → visits. AE timestamps are UTC without a zone. */
+export function parseYoutubeVisits(payload: unknown): RawVisit[] {
+  const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => {
+    const raw = String(r.ts ?? "");
+    return {
+      ts: Date.parse(/Z|[+-]\d\d:?\d\d$/.test(raw) ? raw : `${raw.replace(" ", "T")}Z`),
+      source: String(r.source ?? ""),
+      utm_campaign: String(r.utm_campaign ?? ""),
+      path: String(r.path ?? ""),
+      anon: String(r.anon ?? ""),
+      weight: Number(r.weight ?? 1),
+    };
+  });
+}
+
+/** Gap that chains visits into one burst. Measured 8 Nov 2026: scanner hits landed 0-2 s apart. */
+export const SCANNER_GAP_MS = 5000;
+/** A chain touching this many different campaigns is a scanner: a person opens one video's link. */
+export const SCANNER_MIN_CAMPAIGNS = 3;
+
+/**
+ * YouTube's link scanner renders each new description link with JS, so it looks like a browser.
+ * Measured 8 Nov 2026, 10:49-10:52 UTC: 132 visits over 24+ campaigns in four minutes, several
+ * anon ids on the same campaign and path within a second, and many lone hits on `/` or `/api`
+ * with no collision at all. So the unit is a chain of youtube-tagged visits (any campaign, any
+ * path) with gaps up to SCANNER_GAP_MS, and a chain is scanner traffic when it has either
+ *  - a collision: the same campaign and path from two different anon ids, or
+ *  - at least SCANNER_MIN_CAMPAIGNS different campaigns.
+ * Real viewers (a few per video per day) do neither. The whole chain is dropped, first hit
+ * included. Returns weighted visits to subtract per campaign.
+ */
+export function scannerVisits(visits: RawVisit[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const flush = (chain: RawVisit[]) => {
+    const anons = new Map<string, Set<string>>();
+    for (const v of chain) {
+      const k = `${v.utm_campaign}\u0000${v.path}`;
+      const set = anons.get(k) ?? new Set<string>();
+      set.add(v.anon);
+      anons.set(k, set);
+    }
+    const collision = [...anons.values()].some((set) => set.size >= 2);
+    const campaigns = new Set(chain.map((v) => v.utm_campaign)).size;
+    if (!collision && campaigns < SCANNER_MIN_CAMPAIGNS) return;
+    for (const v of chain) out.set(v.utm_campaign, (out.get(v.utm_campaign) ?? 0) + v.weight);
+  };
+  let chain: RawVisit[] = [];
+  for (const v of [...visits].sort((x, y) => x.ts - y.ts)) {
+    if (chain.length > 0 && v.ts - chain[chain.length - 1]!.ts > SCANNER_GAP_MS) {
+      flush(chain);
+      chain = [];
+    }
+    chain.push(v);
+  }
+  flush(chain);
+  return out;
+}
+
+/** Visits per campaign minus scanner bursts; store clicks untouched (a scanner clicks nothing). */
+export function withoutScanners(
+  index: Map<string, { visits: number; store_clicks: number }>,
+  scanners: Map<string, number>,
+): void {
+  for (const [c, n] of scanners) {
+    const cur = index.get(c);
+    if (cur) cur.visits = Math.max(0, cur.visits - n);
+  }
+}
+
 const hours = (minutes: number) => `${(minutes / 60).toFixed(1)}h`;
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 const int = (n: number) => Math.round(n).toLocaleString("en-US");
 
 /** Метрики канала, сгруппированные по типу контента. */
 export function formatChannel(t: ChannelTotals): string[] {
-  const types = [["long", "videos"], ["shorts", "shorts"], ["live", "live"]] as const;
+  const types = [
+    ["long", "videos"],
+    ["shorts", "shorts"],
+    ["live", "live"],
+  ] as const;
   const lines = types.map(([k, label]) => {
     const views = t[`views_${k}`] ?? 0;
     const gained = t[`subs_gained_${k}`] ?? 0;
@@ -174,7 +282,10 @@ export function formatChannel(t: ChannelTotals): string[] {
   return lines;
 }
 
-export function formatVideoRow(v: VideoTotal, c: Map<string, { visits: number; store_clicks: number }> | undefined): string {
+export function formatVideoRow(
+  v: VideoTotal,
+  c: Map<string, { visits: number; store_clicks: number }> | undefined,
+): string {
   let site: string;
   if (v.campaigns.length === 0) site = "no tagged link in description";
   else if (c === undefined) site = `campaign ${v.campaigns.join(", ")} (site numbers unavailable)`;
@@ -215,15 +326,24 @@ export function summarizeRetention(points: RetentionPoint[]): {
     if (sorted[i]!.at <= 0.03) continue;
     const drop = sorted[i - 1]!.watching - sorted[i]!.watching;
     if (steepest === undefined || drop > steepest.drop) {
-      steepest = { from: Math.round(sorted[i - 1]!.at * 100), to: Math.round(sorted[i]!.at * 100), drop };
+      steepest = {
+        from: Math.round(sorted[i - 1]!.at * 100),
+        to: Math.round(sorted[i]!.at * 100),
+        drop,
+      };
     }
   }
   const rel = points.map((p) => p.relative).filter((x) => Number.isFinite(x));
-  return { at, steepest, relative: rel.length === 0 ? undefined : rel.reduce((a, b) => a + b, 0) / rel.length };
+  return {
+    at,
+    steepest,
+    relative: rel.length === 0 ? undefined : rel.reduce((a, b) => a + b, 0) / rel.length,
+  };
 }
 
 export function formatRetention(points: RetentionPoint[], durationS: number): string[] {
-  if (points.length === 0) return ["Retention: no curve (too few views for YouTube to publish one)."];
+  if (points.length === 0)
+    return ["Retention: no curve (too few views for YouTube to publish one)."];
   const s = summarizeRetention(points);
   const lines = [
     "Retention (share of viewers still watching): " +

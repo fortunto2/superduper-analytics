@@ -19,7 +19,14 @@ import {
   type VideoMeta,
 } from "../src/youtube/api";
 import { readTotals } from "../src/stores/db";
-import { formatVideoRow, summarizeRetention, type VideoTotal } from "../src/youtube/read";
+import {
+  formatVideoRow,
+  parseYoutubeVisits,
+  scannerVisits,
+  summarizeRetention,
+  withoutScanners,
+  type VideoTotal,
+} from "../src/youtube/read";
 import { planWindow, syncYoutube, YT_CRON, YT_RESTATE_DAYS } from "../src/youtube/sync";
 import { runYoutubeTool } from "../src/youtube/tool";
 
@@ -263,6 +270,57 @@ describe("строка ролика", () => {
 
   it("метка без визитов — нули, а не пропуск", () => {
     expect(formatVideoRow({ ...v, campaigns: ["x"] }, new Map())).toContain("0 site visits");
+  });
+});
+
+describe("сканер ссылок YouTube", () => {
+  const C = "youtube-_GzPxIwRMgo";
+  const P = "/wiki/oc-lightning-hackathon-brocheck-2026/";
+  const row = (ts: string, anon: string, path = P, campaign = C) => ({
+    ts,
+    source: "rustman",
+    utm_campaign: campaign,
+    path,
+    anon,
+    weight: 1,
+  });
+
+  it("пачка из разных anon за секунду отбрасывается целиком, одиночный визит через час остаётся", () => {
+    const visits = parseYoutubeVisits({
+      data: [
+        row("2026-11-08 10:50:10.100", "a1"),
+        row("2026-11-08 10:50:10.900", "a2"),
+        row("2026-11-08 10:50:11.300", "a3"),
+        row("2026-11-08 11:55:00.000", "real"),
+      ],
+    });
+    const scanners = scannerVisits(visits);
+    expect(scanners.get(C)).toBe(3);
+    const index = new Map([[C, { visits: 4, store_clicks: 1 }]]);
+    withoutScanners(index, scanners);
+    expect(index.get(C)).toEqual({ visits: 1, store_clicks: 1 });
+  });
+
+  it("цепочка из 3+ разных кампаний без коллизий тоже сканер (одиночные заходы на / и /api)", () => {
+    const visits = parseYoutubeVisits({
+      data: [
+        row("2026-11-08 10:50:10", "a1", "/", "youtube-a"),
+        row("2026-11-08 10:50:11", "a2", "/api", "youtube-b"),
+        row("2026-11-08 10:50:13", "a3", "/crew", "youtube-c"),
+      ],
+    });
+    expect([...scannerVisits(visits).values()].reduce((a, b) => a + b, 0)).toBe(3);
+  });
+
+  it("один anon, перезагрузивший страницу, и две кампании подряд не считаются сканером", () => {
+    const visits = parseYoutubeVisits({
+      data: [
+        row("2026-11-08 10:00:00", "a1"),
+        row("2026-11-08 10:00:01", "a1"),
+        row("2026-11-08 10:00:03", "a2", "/other/", "youtube-b"),
+      ],
+    });
+    expect(scannerVisits(visits).size).toBe(0);
   });
 });
 

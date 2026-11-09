@@ -2,7 +2,13 @@
  * Два инструмента MCP про YouTube. Тонкий слой: данные из D1 и живые вызовы Analytics API,
  * тексты собирает `read.ts`.
  */
-import { askSql, buildCampaignQuery, parseCampaigns, type StatsEnv } from "../stats";
+import {
+  askSql,
+  buildCampaignQuery,
+  buildYoutubeVisitsQuery,
+  parseCampaigns,
+  type StatsEnv,
+} from "../stats";
 import { RETENTION_DAYS } from "../schema";
 import { daysBetween, utcDay } from "../stores/schema";
 import {
@@ -15,6 +21,9 @@ import {
 } from "./api";
 import {
   campaignIndex,
+  parseYoutubeVisits,
+  scannerVisits,
+  withoutScanners,
   defaultChannel,
   findVideos,
   formatChannel,
@@ -151,6 +160,11 @@ export async function runYoutubeTool(
       try {
         const res = await askSql(env, buildCampaignQuery(env.DATASET, span));
         if (res.ok) index = campaignIndex(parseCampaigns(await res.json()));
+        // Link-scanner bursts (YouTube renders new description links) are not visitors.
+        if (index !== undefined) {
+          const raw = await askSql(env, buildYoutubeVisitsQuery(env.DATASET, span));
+          if (raw.ok) withoutScanners(index, scannerVisits(parseYoutubeVisits(await raw.json())));
+        }
       } catch {
         index = undefined;
       }

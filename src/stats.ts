@@ -95,7 +95,10 @@ export type Stats = {
   daily: DayTotal[];
 };
 
-export type StatsFailure = { status: 400 | 500 | 502; body: { error: string } & Record<string, unknown> };
+export type StatsFailure = {
+  status: 400 | 500 | 502;
+  body: { error: string } & Record<string, unknown>;
+};
 
 /** Only what the SQL API is actually asked for; the rest of its response is ignored. */
 type SqlResponse = { data?: Record<string, unknown>[] };
@@ -274,6 +277,27 @@ export function buildCampaignQuery(dataset: string, days: number): string {
   ].join("\n");
 }
 
+/**
+ * Raw human page views tagged by YouTube (`youtube-%`), for burst detection in TS. Volume is a few
+ * per video per day, so rows are cheap; AE SQL has no window functions to do it in the query.
+ */
+export function buildYoutubeVisitsQuery(dataset: string, days: number): string {
+  if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
+    throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
+  }
+  return [
+    "SELECT",
+    "  timestamp AS ts, blob1 AS source, blob14 AS utm_campaign, blob4 AS path, blob8 AS anon,",
+    "  _sample_interval AS weight",
+    `FROM ${dataset}`,
+    `WHERE timestamp > NOW() - INTERVAL '${days}' DAY AND blob3 = 'page_viewed' AND blob9 != 'bot'`,
+    "  AND blob14 LIKE 'youtube-%'",
+    "ORDER BY ts",
+    "LIMIT 10000",
+    "FORMAT JSON",
+  ].join("\n");
+}
+
 export function parseCampaigns(payload: unknown): CampaignTotal[] {
   const rows = (payload as { data?: Record<string, unknown>[] } | null)?.data;
   if (!Array.isArray(rows)) return [];
@@ -302,7 +326,11 @@ export type Breakdown = { source: string; key: string; page_views: number; engag
  * Прямые заходы сюда не попадают: у них реферера нет, и строка с пустым ключом означала бы
  * «источник неизвестен», а не «источника не было».
  */
-export function buildReferrerQuery(dataset: string, window: Window | number, limit?: number): string {
+export function buildReferrerQuery(
+  dataset: string,
+  window: Window | number,
+  limit?: number,
+): string {
   return breakdown(dataset, window, "blob5", "AND blob5 != ''", limit);
 }
 
@@ -312,7 +340,11 @@ export function buildReferrerQuery(dataset: string, window: Window | number, lim
  * Страна, а не город и не координаты. Город сузил бы круг до опознаваемого на сайте с тридцатью
  * посетителями в неделю, и это ровно та граница, за которой счётчик перестаёт быть анонимным.
  */
-export function buildCountryQuery(dataset: string, window: Window | number, limit?: number): string {
+export function buildCountryQuery(
+  dataset: string,
+  window: Window | number,
+  limit?: number,
+): string {
   return breakdown(dataset, window, "blob6", "AND blob6 != ''", limit);
 }
 
@@ -442,7 +474,11 @@ export async function fetchStats(
   days: number,
 ): Promise<{ ok: true; stats: Stats } | ({ ok: false } & StatsFailure)> {
   if (!Number.isInteger(days) || days < 1) {
-    return { ok: false, status: 400, body: { error: "bad_window", message: "days must be a positive integer" } };
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "bad_window", message: "days must be a positive integer" },
+    };
   }
   if (days > RETENTION_DAYS) {
     // Раньше здесь был отказ, и он был прав, пока архива не существовало. Теперь архив есть, и
@@ -562,7 +598,9 @@ export type Metric = { name: string; slot: number; window_days: number; rows: Me
 export function buildMetricQuery(dataset: string, name: string, days: number): string {
   const slot = metricSlot(name);
   if (slot === undefined) {
-    throw new Error(`"${name}" has no double slot — add it to registry/sources.yaml and run make gen`);
+    throw new Error(
+      `"${name}" has no double slot — add it to registry/sources.yaml and run make gen`,
+    );
   }
   if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
     throw new Error(`days must be an integer in 1..${RETENTION_DAYS}, got ${String(days)}`);
@@ -622,15 +660,30 @@ export async function fetchMetric(
     };
   }
   if (!Number.isInteger(days) || days < 1 || days > RETENTION_DAYS) {
-    return { ok: false, status: 400, body: { error: "bad_window", message: "days must be a positive integer" } };
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "bad_window", message: "days must be a positive integer" },
+    };
   }
   if (env.CF_ACCOUNT_ID === undefined || env.CF_API_TOKEN === undefined) {
-    return { ok: false, status: 500, body: { error: "not_configured", message: "CF_ACCOUNT_ID and CF_API_TOKEN are unset" } };
+    return {
+      ok: false,
+      status: 500,
+      body: { error: "not_configured", message: "CF_ACCOUNT_ID and CF_API_TOKEN are unset" },
+    };
   }
 
   const response = await askSql(env, buildMetricQuery(env.DATASET, name, days));
   if (!response.ok) {
-    return { ok: false, status: 502, body: { error: "sql_api_failed", status: response.status, detail: await response.text() } };
+    return {
+      ok: false,
+      status: 502,
+      body: { error: "sql_api_failed", status: response.status, detail: await response.text() },
+    };
   }
-  return { ok: true, metric: { name, slot, window_days: days, rows: parseMetric(await response.json()) } };
+  return {
+    ok: true,
+    metric: { name, slot, window_days: days, rows: parseMetric(await response.json()) },
+  };
 }
