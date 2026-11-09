@@ -200,8 +200,12 @@ export function parseYoutubeVisits(payload: unknown): RawVisit[] {
   });
 }
 
-/** Gap that chains visits into one burst. Measured 8 Nov 2026: scanner hits landed 0-2 s apart. */
-export const SCANNER_GAP_MS = 5000;
+/**
+ * Gap that chains visits into one run. Measured 8 Nov 2026: inside the four-minute scanner run
+ * hits came 0-2 s apart with pauses of up to 19 s; a 5 s gap split the run into pieces that
+ * individually showed neither a collision nor three campaigns, and 4 visits slipped through.
+ */
+export const SCANNER_GAP_MS = 30000;
 /** A chain touching this many different campaigns is a scanner: a person opens one video's link. */
 export const SCANNER_MIN_CAMPAIGNS = 3;
 
@@ -243,14 +247,25 @@ export function scannerVisits(visits: RawVisit[]): Map<string, number> {
   return out;
 }
 
-/** Visits per campaign minus scanner bursts; store clicks untouched (a scanner clicks nothing). */
-export function withoutScanners(
+/**
+ * Site visits for `youtube-%` campaigns come from ONE source: the raw rows, minus scanner chains,
+ * summed per campaign with their sample weights. The grouped campaign query is capped at 50 rows,
+ * so subtracting raw rows from it left a residue and dropped campaigns outside the top 50.
+ * Store clicks stay as the campaign query reports them (a scanner clicks nothing); a campaign
+ * absent from that list gets 0 clicks and its visits all the same.
+ */
+export function applyYoutubeVisits(
   index: Map<string, { visits: number; store_clicks: number }>,
-  scanners: Map<string, number>,
+  visits: RawVisit[],
 ): void {
-  for (const [c, n] of scanners) {
-    const cur = index.get(c);
-    if (cur) cur.visits = Math.max(0, cur.visits - n);
+  for (const [c, cur] of index) if (c.startsWith("youtube-")) cur.visits = 0;
+  const scanners = scannerVisits(visits);
+  const total = new Map<string, number>();
+  for (const v of visits) total.set(v.utm_campaign, (total.get(v.utm_campaign) ?? 0) + v.weight);
+  for (const [c, n] of total) {
+    const cur = index.get(c) ?? { visits: 0, store_clicks: 0 };
+    cur.visits = Math.max(0, n - (scanners.get(c) ?? 0));
+    index.set(c, cur);
   }
 }
 

@@ -22,9 +22,9 @@ import { readTotals } from "../src/stores/db";
 import {
   formatVideoRow,
   parseYoutubeVisits,
+  applyYoutubeVisits,
   scannerVisits,
   summarizeRetention,
-  withoutScanners,
   type VideoTotal,
 } from "../src/youtube/read";
 import { planWindow, syncYoutube, YT_CRON, YT_RESTATE_DAYS } from "../src/youtube/sync";
@@ -297,8 +297,18 @@ describe("сканер ссылок YouTube", () => {
     const scanners = scannerVisits(visits);
     expect(scanners.get(C)).toBe(3);
     const index = new Map([[C, { visits: 4, store_clicks: 1 }]]);
-    withoutScanners(index, scanners);
+    applyYoutubeVisits(index, visits);
     expect(index.get(C)).toEqual({ visits: 1, store_clicks: 1 });
+  });
+
+  it("кампания вне топ-50 campaign-запроса всё равно получает свои визиты", () => {
+    const visits = parseYoutubeVisits({
+      data: [row("2026-11-08 12:00:00", "solo", "/", "youtube-missing")],
+    });
+    const index = new Map([["youtube-stale", { visits: 9, store_clicks: 0 }]]);
+    applyYoutubeVisits(index, visits);
+    expect(index.get("youtube-missing")).toEqual({ visits: 1, store_clicks: 0 });
+    expect(index.get("youtube-stale")?.visits).toBe(0);
   });
 
   it("цепочка из 3+ разных кампаний без коллизий тоже сканер (одиночные заходы на / и /api)", () => {
@@ -310,6 +320,19 @@ describe("сканер ссылок YouTube", () => {
       ],
     });
     expect([...scannerVisits(visits).values()].reduce((a, b) => a + b, 0)).toBe(3);
+  });
+
+  it("пауза до 19 с внутри прогона не рвёт цепочку: хвост из одной кампании тоже сканер", () => {
+    const visits = parseYoutubeVisits({
+      data: [
+        row("2026-11-08 10:51:00", "a1", "/", "youtube-a"),
+        row("2026-11-08 10:51:01", "a2", "/", "youtube-b"),
+        row("2026-11-08 10:51:02", "a3", "/", "youtube-c"),
+        row("2026-11-08 10:51:21", "a4", "/", "youtube-d"),
+        row("2026-11-08 10:51:22", "a4", "/", "youtube-d"),
+      ],
+    });
+    expect([...scannerVisits(visits).values()].reduce((a, b) => a + b, 0)).toBe(5);
   });
 
   it("один anon, перезагрузивший страницу, и две кампании подряд не считаются сканером", () => {

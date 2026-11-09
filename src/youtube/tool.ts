@@ -22,8 +22,7 @@ import {
 import {
   campaignIndex,
   parseYoutubeVisits,
-  scannerVisits,
-  withoutScanners,
+  applyYoutubeVisits,
   defaultChannel,
   findVideos,
   formatChannel,
@@ -163,7 +162,7 @@ export async function runYoutubeTool(
         // Link-scanner bursts (YouTube renders new description links) are not visitors.
         if (index !== undefined) {
           const raw = await askSql(env, buildYoutubeVisitsQuery(env.DATASET, span));
-          if (raw.ok) withoutScanners(index, scannerVisits(parseYoutubeVisits(await raw.json())));
+          if (raw.ok) applyYoutubeVisits(index, parseYoutubeVisits(await raw.json()));
         }
       } catch {
         index = undefined;
