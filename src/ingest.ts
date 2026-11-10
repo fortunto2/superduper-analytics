@@ -16,6 +16,13 @@ export type EdgeContext = {
   userAgent?: string;
   /** Derived from IP + UA + the UTC date — see anon.ts. Authoritative for web. */
   anon?: string;
+  /** From `request.cf.asn` — the network the request came from. Never from the client. */
+  asn?: number;
+  /**
+   * The Accept-Language header, `undefined` when the edge did not look (replays, tests) and
+   * `""` when it looked and found nothing. Every real browser sends one on every request.
+   */
+  acceptLanguage?: string;
 };
 
 export type IngestResult =
@@ -41,6 +48,44 @@ const MAX_REPORTED_ISSUES = 10;
  */
 const BOT_UA =
   /bot|crawl|spider|slurp|headless|preview|monitor|curl|wget|python-requests|facebookexternalhit|whatsapp|telegram/i;
+
+/**
+ * Autonomous systems that are clouds and hosting, not homes or offices. A person does not
+ * browse from here; a crawler, a link scanner or a sandbox does. Deliberately NOT listed:
+ * Cloudflare 13335 (WARP is real people), Zscaler and the VPN hosts such as M247 (real people
+ * behind a proxy). A wrong entry costs a few people; a missing one costs a bot, and the asn
+ * blob says which to add next.
+ */
+export const DATACENTER_ASNS: ReadonlySet<number> = new Set([
+  16509, 14618, 8987, // Amazon / AWS
+  396982, 15169, // Google Cloud / Google
+  8075, // Microsoft Azure
+  14061, // DigitalOcean
+  24940, // Hetzner
+  16276, // OVH
+  63949, // Akamai Connected Cloud (Linode)
+  20473, // Vultr
+  31898, // Oracle Cloud
+  45102, 37963, // Alibaba Cloud
+  132203, 45090, // Tencent Cloud
+  12876, // Scaleway
+  51167, // Contabo
+  60781, 28753, // Leaseweb
+  47583, // Hostinger
+  36351, // IBM Cloud
+]);
+
+/**
+ * Edge-only evidence that a «browser» is a program. Returns the reason, or undefined.
+ * Rows are kept and flagged `bot`, never dropped: the verdict stays auditable and reversible.
+ * Found 2026-11-08: ~50 Chrome-on-Windows hits in two minutes on three sites, no referrer, no
+ * scroll, passed every user-agent test above.
+ */
+export function edgeBotReason(edge: Pick<EdgeContext, "asn" | "acceptLanguage">): string | undefined {
+  if (edge.asn !== undefined && DATACENTER_ASNS.has(edge.asn)) return "datacenter_asn";
+  if (edge.acceptLanguage === "") return "no_accept_language";
+  return undefined;
+}
 
 /** Query strings and fragments carry tokens and PII. Neither is worth keeping. */
 export function cleanPath(path: string | undefined): string | undefined {
@@ -145,6 +190,12 @@ export function canonicalJson(
   return JSON.stringify(Object.fromEntries(keys.map((key) => [key, record[key]])));
 }
 
+function classify(event: Event, edge: EdgeContext): EnrichedEvent["ua_kind"] {
+  const kind = uaKind(event.platform, edge.userAgent, event.auto);
+  if (kind === "browser" && edgeBotReason(edge) !== undefined) return "bot";
+  return kind;
+}
+
 function enrich(
   event: Event,
   edge: EdgeContext,
@@ -171,7 +222,8 @@ function enrich(
     // because anything else would let a page claim to be a thousand different people. Apps
     // have no IP stability to derive from and send an install-scoped UUID instead.
     anon: event.platform === "web" ? (edge.anon ?? claimed) : (claimed ?? edge.anon),
-    ua_kind: uaKind(event.platform, edge.userAgent, event.auto),
+    ua_kind: classify(event, edge),
+    asn: event.platform === "web" && edge.asn !== undefined ? String(edge.asn) : undefined,
     ts: stampTime(event.ts, edge.now),
     props_json,
     metrics_json,

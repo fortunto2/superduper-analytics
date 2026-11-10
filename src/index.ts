@@ -294,6 +294,8 @@ app.post("/e", async (c) => {
     // this path testable without a real colo. Neither can be set by a browser.
     country: c.req.raw.cf?.country?.toString() ?? c.req.header("cf-ipcountry"),
     userAgent,
+    asn: c.req.raw.cf?.asn as number | undefined,
+    acceptLanguage: c.req.header("accept-language") ?? "",
     // The IP is used to derive the id and is never stored — see anon.ts.
     anon: await deriveAnon(c.env.ANON_SALT, now, c.req.header("cf-connecting-ip"), userAgent),
   });

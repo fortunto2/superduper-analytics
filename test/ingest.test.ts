@@ -221,6 +221,48 @@ describe("trust the edge, not the client", () => {
   });
 });
 
+describe("edge bot signals", () => {
+  const kindWith = (over: Partial<Parameters<typeof edge>[0]>) =>
+    accepted(
+      ingest(
+        { events: [{ source: "live2play", platform: "web", name: "page_viewed" }] },
+        edge({ userAgent: SAFARI, ...over }),
+      ),
+    )[0];
+
+  it.each([
+    ["AWS", 16509, "bot"],
+    ["Hetzner", 24940, "bot"],
+    ["a home ISP (Comcast)", 7922, "browser"],
+    ["Cloudflare WARP, which is people", 13335, "browser"],
+  ])("web from %s is %s", (_n, asn, expected) => {
+    expect(kindWith({ asn })?.ua_kind).toBe(expected);
+  });
+
+  it("a Chrome UA with no Accept-Language is a program; a missing look is not", () => {
+    expect(kindWith({ acceptLanguage: "" })?.ua_kind).toBe("bot");
+    expect(kindWith({ acceptLanguage: "en-US,en;q=0.9" })?.ua_kind).toBe("browser");
+    expect(kindWith({})?.ua_kind).toBe("browser");
+  });
+
+  it("keeps the row and records the asn, so the verdict can be audited", () => {
+    const e = kindWith({ asn: 16509 });
+    expect(e?.ua_kind).toBe("bot");
+    expect(e?.asn).toBe("16509");
+  });
+
+  it("never touches an app: CI builds are caught by `auto`, not by network", () => {
+    const [e] = accepted(
+      ingest(
+        { events: [{ source: "live2play", platform: "ios", name: "app_opened" }] },
+        edge({ asn: 16509, userAgent: SAFARI }),
+      ),
+    );
+    expect(e?.ua_kind).toBe("app");
+    expect(e?.asn).toBeUndefined();
+  });
+});
+
 describe("clock", () => {
   const tsOf = (ts: number | undefined) =>
     accepted(ingest({ events: [pageView(ts === undefined ? {} : { ts })] }, edge()))[0]?.ts;

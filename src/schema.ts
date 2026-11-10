@@ -158,6 +158,8 @@ export const BLOB_SLOTS = [
   "utm_medium", // 13
   "utm_campaign", // 14
   "placement", // 15  где на странице нажали — своя размерность, а не props. Дописано 2026-08-04.
+  "asn", // 16  номер автономной системы клиента (веб), как строка. Дописано 2026-11-10: без него
+  // всплеск 8.11 нельзя было разобрать задним числом — край знал ASN, но не записал.
 ] as const;
 
 /**
@@ -223,6 +225,8 @@ export type EnrichedEvent = {
   version?: string;
   anon?: string;
   ua_kind: z.infer<typeof UaKind>;
+  /** Client ASN as a string, web only. Audit trail for the datacenter rule. */
+  asn?: string;
 
   /** Authoritative event time (ms). Never the raw client value — see enrich() in ingest.ts. */
   ts: number;
