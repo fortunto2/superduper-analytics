@@ -160,6 +160,9 @@ export const BLOB_SLOTS = [
   "placement", // 15  где на странице нажали — своя размерность, а не props. Дописано 2026-08-04.
   "asn", // 16  номер автономной системы клиента (веб), как строка. Дописано 2026-11-10: без него
   // всплеск 8.11 нельзя было разобрать задним числом — край знал ASN, но не записал.
+  "device", // 17  phone / tablet / desktop, web only, из user-agent на краю. Дописано 2026-11-20:
+  // карточка «скачай приложение» на life2film показывает iPhone или Mac по устройству, и без
+  // слота нельзя было сказать, кому что показали и кто из них нажал.
 ] as const;
 
 /**
@@ -227,6 +230,8 @@ export type EnrichedEvent = {
   ua_kind: z.infer<typeof UaKind>;
   /** Client ASN as a string, web only. Audit trail for the datacenter rule. */
   asn?: string;
+  /** Web only, from the edge's user agent (never the client's word): phone, tablet or desktop. */
+  device?: "phone" | "tablet" | "desktop";
 
   /** Authoritative event time (ms). Never the raw client value — see enrich() in ingest.ts. */
   ts: number;

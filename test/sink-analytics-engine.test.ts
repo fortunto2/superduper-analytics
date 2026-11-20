@@ -34,6 +34,7 @@ const full: EnrichedEvent = {
   utm_campaign: "nest-01",
   placement: "studio-hero",
   asn: "7922",
+  device: "phone",
 };
 
 describe("positions", () => {
@@ -57,6 +58,7 @@ describe("positions", () => {
       "nest-01", // blob14 utm_campaign
       "studio-hero", // blob15 placement
       "7922", // blob16 asn
+      "phone", // blob17 device
     ]);
   });
 

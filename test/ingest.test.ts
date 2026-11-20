@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ingest, type EdgeContext } from "../src/ingest";
+import { deviceClass, ingest, type EdgeContext } from "../src/ingest";
 import { MAX_EVENTS_PER_REQUEST, MAX_FREEFORM_BYTES } from "../src/schema";
 
 const NOW = Date.parse("2026-06-15T12:00:00.000Z");
@@ -387,5 +387,18 @@ describe("заглушки вместо идентификатора", () => {
       ),
     );
     expect(event?.anon).toBe(derived);
+  });
+});
+
+describe("deviceClass", () => {
+  it("splits real user agents into phone, tablet and desktop", () => {
+    const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Mobile/15E148 Safari/604.1";
+    const pixel = "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36";
+    const tab = "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
+    const ipad = "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+    const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
+    const win = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
+    expect([iphone, pixel, tab, ipad, mac, win].map(deviceClass)).toEqual(["phone", "phone", "tablet", "tablet", "desktop", "desktop"]);
+    expect(deviceClass(undefined)).toBeUndefined();
   });
 });

@@ -125,6 +125,19 @@ export function uaKind(
 }
 
 /**
+ * Coarse device class of a browser, from its user agent: what a page decides on when it offers
+ * the iPhone app or the Mac one, so the same split is needed to read who clicked what.
+ * iPadOS Safari announces itself as a Mac by default and lands in `desktop`; there is no honest
+ * way to tell it from a Mac on the user agent alone.
+ */
+export function deviceClass(userAgent: string | undefined): EnrichedEvent["device"] {
+  if (!userAgent) return undefined;
+  if (/iPad|Tablet|Android(?!.*Mobile)/i.test(userAgent)) return "tablet";
+  if (/iPhone|iPod|Mobile|Android/i.test(userAgent)) return "phone";
+  return "desktop";
+}
+
+/**
  * Строки, которые выглядят как идентификатор, но им не являются.
  *
  * Повод конкретный: ручная проверка ingest прислала `00000000-0000-4000-8000-000000000000` —
@@ -224,6 +237,7 @@ function enrich(
     anon: event.platform === "web" ? (edge.anon ?? claimed) : (claimed ?? edge.anon),
     ua_kind: classify(event, edge),
     asn: event.platform === "web" && edge.asn !== undefined ? String(edge.asn) : undefined,
+    device: event.platform === "web" ? deviceClass(edge.userAgent) : undefined,
     ts: stampTime(event.ts, edge.now),
     props_json,
     metrics_json,
