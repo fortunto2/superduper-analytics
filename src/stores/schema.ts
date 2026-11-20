@@ -29,6 +29,8 @@ export const METRICS = {
   /** First-time downloads. NOT redownloads — a reinstall is not a new person. */
   installs: "installs",
   redownloads: "redownloads",
+  /** First-time downloads that came through a link carrying `ct` (App Downloads Detailed). Not part of `installs`' sum. */
+  campaign_installs: "campaign_installs",
   /**
    * Удаления, как их видит Apple. Единственная метрика здесь, которой НЕТ аналога в наших
    * событиях и быть не может: счётчик видит тишину, а тишина одинаково выглядит и когда

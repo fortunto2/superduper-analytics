@@ -8,7 +8,7 @@
  * переустанавливают.
  */
 import { describe, expect, it } from "vitest";
-import { appleError, parseDownloads, parseInstallDeletion } from "../src/stores/analytics-reports";
+import { appleError, parseDownloads, parseDownloadsByCampaign, parseInstallDeletion } from "../src/stores/analytics-reports";
 
 const HEADER =
   "Date\tApp Name\tApp Apple Identifier\tEvent\tDownload Type\tApp Version\tDevice\t" +
@@ -176,5 +176,30 @@ describe("appleError", () => {
       "<html> <body>502 Bad Gateway</body> </html>",
     );
     expect(appleError("x".repeat(500))).toHaveLength(120);
+  });
+});
+
+describe("parseDownloadsByCampaign", () => {
+  // The real header of App Downloads Detailed (life2film, Nov 2026).
+  const H = "Date\tApp Name\tApp Apple Identifier\tDownload Type\tApp Version\tDevice\tPlatform Version\tSource Type\tSource Info\tCampaign\tPage Type\tPage Title\tPre-Order\tTerritory\tCounts";
+  const row = (type: string, info: string, ct: string, country: string, n: number) =>
+    ["2026-11-14", "Life2Film", "6761656888", type, "1.22", "iPhone", "iOS 26.1", "Web referrer", info, ct, "Product page", "Default", "", country, String(n)].join("\t");
+
+  it("first downloads per campaign and country; rows without a campaign and redownloads are not counted", () => {
+    const { rows } = parseDownloadsByCampaign(
+      [H,
+        row("First-time download", "life2film.com", "site-hero", "US", 3),
+        row("First-time download", "life2film.com", "site-hero", "US", 2),
+        row("First-time download", "life2film.com", "tool-video-splitter-qr", "RU", 1),
+        row("Redownload", "life2film.com", "site-hero", "US", 4),
+        row("First-time download", "com.openai.chat", "", "US", 9),
+      ].join("\n"),
+      "life2film",
+    );
+    const got = rows.map((r) => [r.metric, r.campaign, r.country, r.value]).sort();
+    expect(got).toEqual([
+      ["campaign_installs", "site-hero", "US", 5],
+      ["campaign_installs", "tool-video-splitter-qr", "RU", 1],
+    ]);
   });
 });

@@ -14,6 +14,8 @@ import {
   INSTALL_DELETION_REPORT,
   listInstances,
   parseDownloads,
+  parseDownloadsByCampaign,
+  DOWNLOADS_DETAILED_REPORT,
   parseInstallDeletion,
   segmentUrls,
 } from "./analytics-reports";
@@ -153,6 +155,7 @@ type ReportPass = {
 const PASSES: readonly ReportPass[] = [
   { provider: "appstore-downloads", report: DOWNLOADS_REPORT, parse: parseDownloads },
   { provider: "appstore-analytics", report: INSTALL_DELETION_REPORT, parse: parseInstallDeletion },
+  { provider: "appstore-campaigns", report: DOWNLOADS_DETAILED_REPORT, parse: parseDownloadsByCampaign },
 ];
 
 /**

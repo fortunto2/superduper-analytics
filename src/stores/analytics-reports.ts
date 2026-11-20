@@ -176,6 +176,8 @@ function parseDaily(
   report: string,
   required: string[],
   classify: Classify,
+  /** Column whose value becomes `campaign`; rows where it is empty are skipped. Absent: campaign ''. */
+  campaignColumn?: string,
 ): { rows: StoreRow[]; skipped: number } {
   const lines = tsv.split("\n").filter((l) => l.trim() !== "");
   const header = lines.shift();
@@ -205,6 +207,8 @@ function parseDaily(
       skipped += 1;
       continue;
     }
+    const campaign = campaignColumn === undefined ? "" : cell(campaignColumn);
+    if (campaignColumn !== undefined && campaign === "") continue;
     const metric = classify(cell);
     if (metric === null) continue;
     // Незнакомое пропускаем со счётом, а не роняем прогон: Apple добавит тип, и падать из-за
@@ -214,10 +218,10 @@ function parseDaily(
       continue;
     }
 
-    const key = `${day}|${metric}|${country}`;
+    const key = `${day}|${metric}|${campaign}|${country}`;
     const seen = totals.get(key);
     if (seen === undefined) {
-      totals.set(key, { day, source, provider: "appstore", metric, campaign: "", country, value });
+      totals.set(key, { day, source, provider: "appstore", metric, campaign, country, value });
     } else {
       seen.value += value;
     }
@@ -268,4 +272,33 @@ export function parseDownloads(tsv: string, source: string): { rows: StoreRow[];
         return undefined;
     }
   });
+}
+
+/** Отчёт с колонкой `Campaign`: загрузки по `ct` из ссылок на App Store. */
+export const DOWNLOADS_DETAILED_REPORT = "App Downloads Detailed";
+
+/**
+ * Первые загрузки ПО КАМПАНИИ (`ct` в ссылке на App Store) → `campaign_installs`.
+ *
+ * Отдельная метрика, а не `installs` с непустым `campaign`: сводки суммируют кампанию прочь, и
+ * те же загрузки, пришедшие из Standard и из Detailed, посчитались бы дважды. Строки без
+ * кампании (поиск в сторе, ChatGPT, Appraven) пропускаются: их общее число даёт Standard.
+ * Detailed Apple выпускает не каждый день (порог приватности): life2film, 30 дней до
+ * 19.11.2026 — 8 файлов, `site-hero` 132 загрузки. Нет файла — нет строк, а не ноль.
+ */
+export function parseDownloadsByCampaign(tsv: string, source: string): { rows: StoreRow[]; skipped: number } {
+  return parseDaily(tsv, source, DOWNLOADS_DETAILED_REPORT, ["Download Type", "Campaign"], (cell) => {
+    switch (cell("Download Type")) {
+      case "First-time download":
+        return METRICS.campaign_installs;
+      case "Redownload":
+      case "Manual update":
+      case "Auto-update":
+      case "Auto-download":
+      case "Restore":
+        return null;
+      default:
+        return undefined;
+    }
+  }, "Campaign");
 }
