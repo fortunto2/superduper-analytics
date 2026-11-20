@@ -16,6 +16,7 @@ import { deriveAnon } from "./anon";
 import { buildFeed } from "./feed";
 import { DASHBOARD, DASHBOARD_CACHE_SECONDS } from "./dashboard";
 import { ingest } from "./ingest";
+import { mailroomEvent, verifyMailroom, type MailroomPayload } from "./hooks/mailroom";
 import { isRegisteredOrigin } from "./registry";
 import { buildOpenReport, OPEN_CACHE_SECONDS, OPEN_PAGE, OPEN_PAGE_CACHE_SECONDS } from "./open";
 import { handleMcp } from "./mcp";
@@ -310,6 +311,50 @@ app.post("/e", async (c) => {
   if (counted.length > 0) writeEvents(c.env.EVENTS, counted);
 
   // Nothing useful to say, and it keeps the beacon cheap.
+  return c.body(null, 204);
+});
+
+/**
+ * Mailroom's webhooks: what happened to our emails, as events of the product they were for.
+ * Mailroom serves every product (an organization or brand each), so the product is named per
+ * email by its `source` tag, or per webhook by `?source=`; neither → the event is dropped
+ * rather than guessed. It must be in the registry like any other source. Signed
+ * with MAILROOM_WEBHOOK_SECRET; unset, the door is shut. No address is kept — see hooks/mailroom.ts.
+ */
+app.post("/hooks/mailroom", async (c) => {
+  const secret = (c.env as unknown as { MAILROOM_WEBHOOK_SECRET?: string }).MAILROOM_WEBHOOK_SECRET;
+  if (!secret) return c.json({ error: "not_configured" }, 404);
+  const body = await c.req.text();
+  if (body.length > MAX_BODY_BYTES) return c.json({ error: "body_too_large" }, 413);
+  const now = Date.now();
+  const ok = await verifyMailroom(
+    secret,
+    {
+      id: c.req.header("webhook-id") ?? c.req.header("svix-id"),
+      timestamp: c.req.header("webhook-timestamp") ?? c.req.header("svix-timestamp"),
+      signature: c.req.header("webhook-signature") ?? c.req.header("svix-signature"),
+    },
+    body,
+    now,
+  );
+  if (!ok) return c.json({ error: "bad_signature" }, 401);
+  let payload: MailroomPayload;
+  try {
+    payload = JSON.parse(body) as MailroomPayload;
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+  const emailId = payload.data?.email_id;
+  // One person per email id, stable across days (unlike the web's daily id): opens and the
+  // click of one email count once. Salted, so the id cannot be looked up in Mailroom.
+  const anon = emailId && c.env.ANON_SALT ? await deriveAnon(c.env.ANON_SALT, 0, `mailroom:${emailId}`, "") : undefined;
+  const source = payload.data?.tags?.source ?? c.req.query("source");
+  if (!source) return c.json({ error: "no_source" }, 400);
+  const event = mailroomEvent(payload, { source, anon });
+  if (!event) return c.body(null, 204);
+  const result = ingest({ events: [event] }, { now, anon });
+  if (!result.ok) return c.json(result.body, result.status);
+  writeEvents(c.env.EVENTS, result.events);
   return c.body(null, 204);
 });
 

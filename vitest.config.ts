@@ -25,6 +25,7 @@ export const TEST_BINDINGS = {
   CF_API_TOKEN: "test-token-not-real",
   DASHBOARD_KEY: "test-dashboard-key",
   ANON_SALT: "test-salt",
+  MAILROOM_WEBHOOK_SECRET: "whsec_dGVzdC1tYWlscm9vbS1zZWNyZXQ=",
   INTERNAL_IPS: "203.0.113.7",
 };
 
