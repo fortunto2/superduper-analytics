@@ -34,6 +34,10 @@ sites:
     public: true
   - id: facealarm
     url: https://face-alarm.com
+  # StarLapse's site, apart from the app (id starlapse): search and the site's own visits.
+  - id: starlapse-site
+    name: StarLapse site
+    url: https://starlapse.app
   - id: you2idea
     url: https://you2idea.com
   - id: miralinka
