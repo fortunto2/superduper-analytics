@@ -199,6 +199,20 @@ describe("trust the edge, not the client", () => {
     ["browser UA on web", "web", SAFARI, "browser"],
     ["crawler UA on web", "web", "Mozilla/5.0 (compatible; Googlebot/2.1)", "bot"],
     ["link preview fetcher", "web", "facebookexternalhit/1.1", "bot"],
+    // Measured 2026-11: rustman «2x» was this one. Named in BOT_UA, not left to «crawl» in its URL.
+    [
+      "Meta AI's rendering indexer without its docs URL",
+      "web",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 (compatible; meta-webindexer/1.1)",
+      "bot",
+    ],
+    ["Meta's agent fetcher", "web", "Mozilla/5.0 (compatible; meta-externalagent/1.1)", "bot"],
+    [
+      "plain Chrome 145, which is people",
+      "web",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+      "browser",
+    ],
     ["no UA at all on web", "web", undefined, "bot"],
     // Measured 2026-10: 40k «people» on airsignal.app in five days were this headless browser,
     // which names none of the words BOT_UA looks for.
@@ -235,6 +249,8 @@ describe("edge bot signals", () => {
     ["Hetzner", 24940, "bot"],
     ["a home ISP (Comcast)", 7922, "browser"],
     ["Cloudflare WARP, which is people", 13335, "browser"],
+    ["Meta's crawler fleet", 32934, "bot"],
+    ["Yandex, where Yandex Browser users live", 13238, "browser"],
   ])("web from %s is %s", (_n, asn, expected) => {
     expect(kindWith({ asn })?.ua_kind).toBe(expected);
   });

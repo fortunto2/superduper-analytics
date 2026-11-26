@@ -46,8 +46,10 @@ const MAX_REPORTED_ISSUES = 10;
  * Heuristic, and named as one. Cloudflare's real bot score lives in
  * `request.cf.botManagement`, which is Enterprise-only, so this is what we get.
  */
+// meta-* named on purpose: meta-webindexer/1.1 (Meta AI search) renders JS in Chrome and was
+// caught only by «crawler» in its docs URL — 436 of rustman's 558 «people-days» 19–25 Nov 2026.
 const BOT_UA =
-  /bot|crawl|spider|slurp|headless|preview|monitor|curl|wget|python-requests|facebookexternalhit|whatsapp|telegram/i;
+  /bot|crawl|spider|slurp|headless|preview|monitor|curl|wget|python-requests|facebookexternalhit|facebookcatalog|meta-webindexer|meta-externalagent|meta-externalads|whatsapp|telegram/i;
 
 /**
  * Autonomous systems that are clouds and hosting, not homes or offices. A person does not
@@ -76,6 +78,17 @@ export const DATACENTER_ASNS: ReadonlySet<number> = new Set([
 ]);
 
 /**
+ * Networks that are crawler fleets rather than clouds: kept apart from DATACENTER_ASNS so the
+ * verdict says which. Meta 32934: its indexer renders our script, one fresh anon per page
+ * (rustman 19–25 Nov 2026: ~1400 bot rows vs 22 «browser» across all sites in 14 days; those 22
+ * may be Meta staff on the corp network, and that cost is accepted). Yandex 13238 is NOT here:
+ * Yandex Browser users can sit on it, and YandexBot names itself in its UA.
+ */
+export const CRAWLER_ASNS: ReadonlySet<number> = new Set([
+  32934, // Meta
+]);
+
+/**
  * Edge-only evidence that a «browser» is a program. Returns the reason, or undefined.
  * Rows are kept and flagged `bot`, never dropped: the verdict stays auditable and reversible.
  * Found 2026-11-08: ~50 Chrome-on-Windows hits in two minutes on three sites, no referrer, no
@@ -83,6 +96,7 @@ export const DATACENTER_ASNS: ReadonlySet<number> = new Set([
  */
 export function edgeBotReason(edge: Pick<EdgeContext, "asn" | "acceptLanguage">): string | undefined {
   if (edge.asn !== undefined && DATACENTER_ASNS.has(edge.asn)) return "datacenter_asn";
+  if (edge.asn !== undefined && CRAWLER_ASNS.has(edge.asn)) return "crawler_asn";
   if (edge.acceptLanguage === "") return "no_accept_language";
   return undefined;
 }
