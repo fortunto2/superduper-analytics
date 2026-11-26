@@ -1,6 +1,6 @@
 # Bot rows counted as people in ad-hoc SQL (rustman 2x, 26.11.2026)
 
-Status: 1-3 done 26.11.2026 (1-2 in src/ingest.ts with tests; 3 in the analytics-dig skill and harness checks.json).
+Status: 1-3 done and deployed 26.11.2026 (version a043ea98) (1-2 in src/ingest.ts with tests; 3 in the analytics-dig skill and harness checks.json).
 
 ## What happened
 
